@@ -3,24 +3,36 @@ import random
 
 # Lists for mapping
 SUIT_LIST = ['♥', '♦', '♣', '♠']
-RANK_LIST = ['a', 'k', 'q', 'j', '10', '9', '8', '7']
+RANK_LIST = ['A', 'K', 'Q', 'J', '10', '9', '8', '7']
+
+class State(Enum):
+    ROZDÁNÍ_KARET = 0
+    LICITACE_TRUMF = 1
+    LICITACE_TALON = 2
+    LICITACE_HRA = 3
+    LICITACE_DOBRY_SPATNY = 4
+    LICITACE_BETL_DURCH = 5
+    HRA = 6
+    BETL = 7
+    DURCH = 7
+    END = 8
 
 class Mode(Enum):
     HRA = 1
-    SEDMA = 2
+    #SEDMA = 2
     BETL = 4
     DURCH = 5
     
 class CardRanks(Enum):
     # Příklad hodnot, nahraďte je skutečnými hodnotami karet
-    ESO = 8
-    DESET = 7
-    KRAL = 6
-    SVRSEK = 5
-    SPODEK = 4
-    DEVET = 3
-    OSM = 2
-    SEDM = 1
+    A = 8
+    X = 7
+    K = 6
+    Q = 5
+    J = 4
+    IX = 3
+    VIII = 2
+    VII = 1
     
 
 class CardSuits(Enum):
@@ -40,14 +52,14 @@ SUITE_MAP = {
 
 # Mapování hodnoty
 RANK_MAP = {
-    'a': CardRanks.ESO,
-    'k': CardRanks.KRAL,
-    'q': CardRanks.SVRSEK,
-    'j': CardRanks.SPODEK,
-    '10': CardRanks.DESET,
-    '9': CardRanks.DEVET,
-    '8': CardRanks.OSM,
-    '7': CardRanks.SEDM
+    'a': CardRanks.A,
+    'k': CardRanks.K,
+    'q': CardRanks.Q,
+    'j': CardRanks.J,
+    '10': CardRanks.X,
+    '9': CardRanks.IX,
+    '8': CardRanks.VIII,
+    '7': CardRanks.VII
 }
 
 class Card:
@@ -63,15 +75,14 @@ class Card:
         self.suit = suit
         
     def __eq__(self, other):
-        """
-        Porovná mezi sebou 2 karty.
-        """
+        """Porovná mezi sebou 2 karty."""
         if isinstance(other, Card):
             return self.rank == other.rank and self.suit == other.suit
         return False
 
     def __str__(self):
         # Mapování barev na ANSI escape kódy
+        """
         color_map = {
             CardSuits.SRDCE: '\033[35m', # Světle červená
             CardSuits.KULE: '\033[31m',  # Světle červená
@@ -83,34 +94,31 @@ class Card:
         
         # Získání barvy pro danou barvu karty
         color_code = color_map.get(self.suit, reset_color)
+        """
         
-        return f"{color_code}{self.rank.name} {self.suit.value}{reset_color}"
+        return f"{self.rank.name} {self.suit.value}"
 
     def __repr__(self):
-        """
-        Metoda pro formální reprezentaci objektu, užitečná pro debugování.
-        """
+        """Metoda pro formální reprezentaci objektu, užitečná pro debugování."""
         return f"Card(rank={self.rank}, suit={self.suit})"
     
     def get_value(self, game_mode: Mode) -> int:
-        """
-        Vrátí číselnou hodnotu karty na základě herního módu.
-        """
-        if game_mode in (Mode.HRA, Mode.SEDMA):
+        """Vrátí číselnou hodnotu karty na základě herního módu."""
+        if game_mode == Mode.HRA:
             return self.rank.value
         
         if game_mode in (Mode.BETL, Mode.DURCH):
             # Pro betl a durch je deset pod devítkou
             # Proto musíte předefinovat pořadí karet.
             betl_order = {
-                CardRanks.ESO: 8,
-                CardRanks.KRAL: 7,
-                CardRanks.SVRSEK: 6,
-                CardRanks.SPODEK: 5,
-                CardRanks.DESET: 4,
-                CardRanks.DEVET: 3,
-                CardRanks.OSM: 2,
-                CardRanks.SEDM: 1
+                CardRanks.A: 8,
+                CardRanks.K: 7,
+                CardRanks.Q: 6,
+                CardRanks.J: 5,
+                CardRanks.X: 4,
+                CardRanks.IX: 3,
+                CardRanks.VIII: 2,
+                CardRanks.VII: 1
             }
             return betl_order[self.rank]
             
@@ -138,28 +146,22 @@ class Deck:
     CARDS_NUMBER = 32
 
     def __init__(self):
-        self.cards = self.initialize_deck()
+        self.cards = self.shuffle()
         self.card_index = 0
 
     def initialize_deck(self) -> list:
-        """
-        Metoda vytvoří standardní balíček 32 karet.
-        """
+        """Metoda vytvoří standardní balíček 32 karet."""
         return [Card(rank, suit) for suit in CardSuits for rank in CardRanks]
         
-    def shuffle(self) -> None:
-        """
-        Metoda náhodně zamíchá balíček karet.
-        """
-        self.initialize_deck() # Zajistí, že balíček je kompletní
-        random.shuffle(self.cards)
+    def shuffle(self) -> list:
+        """Metoda náhodně zamíchá balíček karet."""
+        deck = self.initialize_deck() # Zajistí, že balíček je kompletní
+        random.shuffle(deck)
         self.card_index = 0 # Resetuje index po zamíchání
+        return deck
 
     def deal_card(self) -> Card|None:
-        """
-        Vrátí další kartu z balíčku a posune index.
-        Vrátí None, pokud v balíčku už žádná karta není.
-        """
+        """Vrátí další kartu z balíčku a posune index, nebo None pokud v balíčku už žádná karta není."""
         if self.has_next_card():
             card = self.cards[self.card_index]
             self.card_index += 1
@@ -167,7 +169,5 @@ class Deck:
         return None
 
     def has_next_card(self) -> bool:
-        """
-        Zkontroluje, zda v balíčku zbývají karty.
-        """
+        """Zkontroluje, zda v balíčku zbývají karty."""
         return self.card_index < len(self.cards)

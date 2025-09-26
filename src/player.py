@@ -41,15 +41,21 @@ class Hand:
     def add_won_card(self, card: Card) -> None: 
         self.won_cards.append(card) 
         
-    def calculate_hand(self): 
+    def calculate_hand(self, mode: Mode): 
         for card in self.won_cards: 
-            if card.rank == 7 or card.rank == 8: 
+            if card.get_value(mode) == 7 or card.get_value(mode) == 8: 
                 self.points += 10
+                
+    def remove_hand(self):
+        self.cards = []
              
 class Player: 
     def __init__(self, number: int): 
         self.number = number 
-        self.hand = Hand() 
+        self.hand = Hand()
+        
+    def remove_hand(self):
+        self.hand.remove_hand()
     
     def add_card(self, card: Card): 
         """Adds card to player from deck.""" 
@@ -88,10 +94,10 @@ class Player:
     def play(self, 
              trick_suit: CardSuits|None, 
              trumph: CardSuits,
+             played_card: Card,
              played_cards: list[Card], 
              mode: Mode) -> Card:
         """Ask player for a card then remove from the hand and returns it"""
-        played_card = self.choose_card()
         self.hand.remove_card(played_card)
         if trick_suit:
             while not self.check_played_card(trick_suit, trumph, played_card, played_cards, mode):
@@ -100,13 +106,19 @@ class Player:
                 self.hand.remove_card(played_card)
         return played_card 
     
-    def show_first_seven(self): 
-        trumph_cards = [] 
-        for i in range(TRUMPH_CARDS): 
+    def pick_cards(self, count: int):
+        """Returns a specific amount of cards."""
+        trumph_cards = []
+        if count == "all":
+            count = len(self.hand.cards)
+        for i in range(count):
+            if i > len(self.hand.cards):
+                break
             trumph_cards.append(self.hand.cards[i])
-        return f"Player #{self.number}: {', '.join(str(card) for card in trumph_cards)}" 
+        return trumph_cards
     
-    def calculate_hand(self) -> int: 
+    def calculate_hand(self, mode: Mode) -> int:
+        self.hand.calculate_hand(mode)
         return self.hand.points
     
     def check_played_card(self, trick_suit: CardSuits, trumph: CardSuits,
@@ -124,6 +136,7 @@ class Player:
         Returns:
             bool: True = správně zahraná karta, False = porušení pravidel
         """
+        played_cards = [card for card in played_cards if card is not None]
 
         # --- 1. má hráč stejnou barvu jako je povinná? ---
         if self.hand.find_card_by_suit(trick_suit):

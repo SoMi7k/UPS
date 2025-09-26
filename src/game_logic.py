@@ -1,21 +1,17 @@
 from player import Player
 from cards import Card, CardSuits, Mode
-    
+
 class GameLogic:
     def __init__(self, num_players: int):
         self.trumph: CardSuits
         self.talon: list[Card] = []
         self.num_players: int = num_players
-        self.mode: Mode
+        self.mode: Mode|None = None
         
-    def move_to_talon(self, player: Player):
+    def move_to_talon(self, card: Card, player: Player):
         """Přesune karty do talonu."""
-        first_card = player.choose_card()
-        second_card = player.choose_card()
-        player.hand.remove_card(first_card)
-        player.hand.remove_card(second_card)
-        self.talon.append(first_card)
-        self.talon.append(second_card)
+        player.hand.remove_card(card)
+        self.talon.append(card)
     
     def move_from_talon(self, player: Player):
         """V případě betlu, nebo durchu se převedou karty s talonu hráči, který chce tyto hru hrát."""
@@ -23,12 +19,6 @@ class GameLogic:
             player.add_card(card)
         
         self.talon = []
-        
-    def choose_trumph(self, player: Player):
-        """Hráč vybírá trumph pro danou hru."""
-        player.show_first_seven()
-        card = player.choose_card()
-        self.trumph = card.suit
     
     def find_trumph(self, cards: list[Card], decision_list: list[bool]) -> list[bool]:
         """Vrátí pole, kde True znamená trumf a False opak."""
@@ -70,7 +60,7 @@ class GameLogic:
         trick_suit = cards[start_player_index].suit
         decision_list = self.num_players * [True]
         
-        if self.mode == Mode.HRA or self.mode == Mode.SEDMA:
+        if self.mode == Mode.HRA:
             decision_list = self.find_trumph(cards, decision_list)
             trumph_count = sum(decision_list)
             
@@ -101,48 +91,4 @@ class GameLogic:
     
         winning_index = self.not_trumph_case(cards, trick_suit)
         return winning_index, cards[winning_index]
-        
-    def higher_game_call(self, player: Player):
-        """Pokud byla přelicitována hra nebo sedma, funkce aplikuje proces přesunu karet z talonu a do něj"""
-        self.move_from_talon(player)
-        self.move_to_talon(player)
-            
-    def choose_mode(self):
-        """Hráč vybýrá daný mód"""
-        # hra, sedma, betl, durch
-        mode = input("Hra: [h|s|b|d]\n> ")
-        match mode:
-            case "h":
-                self.mode = Mode.HRA
-            case "s":
-                self.mode = Mode.SEDMA
-            case "b":
-                self.mode = Mode.BETL
-            case "d":
-                self.mode = Mode.DURCH
-            case _:
-                self.mode = Mode.HRA
-                           
-    def accept_mode(self, player: Player) -> bool:
-        """Ptá se hráče na hru -> dobrá/špatná"""
-        # špatná / dobrá
-        response = input("Barva: [d|s]\n> ")
-        
-        if response == 'd':
-            print(f"Player #{player.number}: Dobrý")
-            return True
-        else:
-            if self.mode.value <= 2:
-                mode = input("Hra: [b|d]\n> ")
-                if mode == 'b':
-                    print(f"Player #{player.number}: Špatný - Betl")
-                    self.mode = Mode.BETL
-                else:
-                    print(f"Player #{player.number}: Špatný - Durch")
-                    self.mode = Mode.DURCH
-            else:
-                print(f"Player #{player.number}: Špatný - Durch")
-                self.mode = Mode.DURCH
-            
-            return False
         
