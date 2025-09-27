@@ -1,6 +1,6 @@
-from player import Player
-from cards import Card, Deck, Mode, State
-from game_logic import GameLogic
+from .player import Player
+from .cards import Card, Deck, Mode, State
+from .game_logic import GameLogic
 
 ROZDAVANI_KARET = [7, 5, 5, 5]
 

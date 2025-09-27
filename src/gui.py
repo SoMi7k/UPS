@@ -1,6 +1,6 @@
 import pygame
-from cards import CardSuits, Card, State, Mode
-from game import Game
+from .cards import CardSuits, Card, State, Mode
+from .game import Game
 import sys
 
 WIDTH, HEIGHT = 800, 600
@@ -16,6 +16,7 @@ class GUI:
         self.active_rects = None
         
     def init_gui(self):
+        """Inicializace GUI."""
         pygame.init()
         screen = pygame.display.set_mode((WIDTH, HEIGHT))
         screen.fill((0,0,255))
@@ -23,9 +24,11 @@ class GUI:
         return screen
     
     def reset_game(self):
+        """Vyresetuje hru."""
         self.game = Game()
 
     def draw_text(self, text: str, x: int | None = None, y: int | None = None, color=(0, 0, 0)):
+        """Obecná funkce pro vykreslení textu."""
         img = self.font.render(text, True, color)
 
         if x is None or y is None:
@@ -37,6 +40,7 @@ class GUI:
         self.screen.blit(img, placing)
         
     def color_mapping(self, suit: CardSuits):
+        """Namapuje barvu na jednotlivé karty."""
         color_map = {
             CardSuits.SRDCE: (255,0,0), # Červená
             CardSuits.KULE: (204,0,102),  # Karmínová
@@ -46,12 +50,14 @@ class GUI:
         return color_map.get(suit)
     
     def text_placing_middle(self, text: str) -> tuple[int, int]:
+        """Vykreslý text na střed obrazovky."""
         text_w, text_h = self.font.size(text)
         text_x = (self.middle[0] - (text_w // 2)) 
         text_y = (self.middle[1] - (text_h // 2))
         return text_x, text_y
     
     def is_pointed(self, rect: pygame.Rect):
+        """Zeptá se jestli je na daný objekt namířena myš."""
         mouse_x, mouse_y = pygame.mouse.get_pos()  # pozice myši
         
         if rect.collidepoint((mouse_x, mouse_y)):
@@ -62,9 +68,7 @@ class GUI:
         return color
     
     def draw_played_cards(self, cards: list[Card]):
-        """
-        Vykreslí odehrané karty na střed okna (horizontálně i vertikálně).
-        """
+        """Vykreslí odehrané karty na střed okna (horizontálně i vertikálně)."""
         # Mezera mezi kartami (stejná jako v draw_cards)
         space_between_cards = 60
         # Určíme počet karet, které se budou vykreslovat (ty, co nejsou None)
@@ -115,17 +119,19 @@ class GUI:
                 current_x += CARD_WIDTH + space_between_cards
 
     def draw_cards(self, cards: list[Card], x=20, y=HEIGHT-100) -> list[tuple[pygame.Rect, str]]:
+        """Vykreslí karty hráče."""
         rects = []
         for i, c in enumerate(cards):
             space_between_cards = 60
             rect = pygame.Rect(x + i*space_between_cards, y, CARD_WIDTH, CARD_HEIGHT)
-            color = self.is_pointed(rect)
-            pygame.draw.rect(self.screen, color, rect)
-            pygame.draw.rect(self.screen, (0,0,0), rect, 2) 
-            text_w, text_h = self.font.size(str(c))
-            text_x = rect.x + (CARD_WIDTH - text_w) // 2
-            text_y = rect.y + (CARD_HEIGHT - text_h) // 2
-            self.draw_text(str(c), text_x, text_y, color=self.color_mapping(c.suit))
+            image = c.get_image()
+            self.screen.blit(image, rect.topleft)
+            #color = self.is_pointed(rect)
+            #pygame.draw.rect(self.screen, color, rect)
+            #ctext_w, text_h = self.font.size(str(c))
+            #text_x = rect.x + (CARD_WIDTH - text_w) // 2
+            #text_y = rect.y + (CARD_HEIGHT - text_h) // 2
+            #self.draw_text(str(c), text_x, text_y, color=self.color_mapping(c.suit))
             rects.append((rect, str(c)))
             
         self.active_rects = rects
@@ -196,6 +202,7 @@ class GUI:
         self.draw_selection_buttons(["ANO", "NE"],)
         
     def draw(self):
+        """Vykreslí daný stav hry."""
         self.screen.fill((0, 0, 255))
         
         if self.game.state == State.ROZDÁNÍ_KARET:
@@ -223,6 +230,7 @@ class GUI:
         pygame.display.flip() 
     
     def handle_event(self, event):
+        """Mapuje funkce pro logiku podle stavů v reakci na jednotlivé události hráče."""
         if event.type == pygame.MOUSEBUTTONDOWN:
             selected_index = -1
             for i, r in enumerate(self.active_rects):
@@ -258,9 +266,9 @@ class GUI:
                             sys.exit()
                     case _:
                         raise Exception("Error State")
-                        
+                    
+                    
 if __name__ == "__main__":
-    game = Game()
     gui = GUI()
 
     while True:

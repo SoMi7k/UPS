@@ -1,9 +1,7 @@
 from enum import Enum
 import random
-
-# Lists for mapping
-SUIT_LIST = ['♥', '♦', '♣', '♠']
-RANK_LIST = ['A', 'K', 'Q', 'J', '10', '9', '8', '7']
+import pygame
+import os
 
 class State(Enum):
     ROZDÁNÍ_KARET = 0
@@ -34,7 +32,6 @@ class CardRanks(Enum):
     VIII = 2
     VII = 1
     
-
 class CardSuits(Enum):
     # Příklad barev, nahraďte je skutečnými barvami karet
     SRDCE = '♥'
@@ -42,6 +39,10 @@ class CardSuits(Enum):
     ZALUDY = '♣'
     LISTY = '♠'
     
+# Lists for mapping
+SUIT_LIST = ['♥', '♦', '♣', '♠']
+RANK_LIST = ['a', 'k', 'q', 'j', '10', '9', '8', '7']
+
 # Mapování barvy    
 SUITE_MAP = {
     '♥': CardSuits.SRDCE,
@@ -60,6 +61,44 @@ RANK_MAP = {
     '9': CardRanks.IX,
     '8': CardRanks.VIII,
     '7': CardRanks.VII
+}
+    
+CARD_IMAGES = {
+    (CardRanks.A, CardSuits.ZALUDY): "images/acorn-ace.png",
+    (CardRanks.K, CardSuits.ZALUDY): "images/acorn-king.png",
+    (CardRanks.Q, CardSuits.ZALUDY): "images/acorn-ober.png",
+    (CardRanks.J, CardSuits.ZALUDY): "images/acorn-unter.png",
+    (CardRanks.X, CardSuits.ZALUDY): "images/acorn-ten.png",
+    (CardRanks.IX, CardSuits.ZALUDY): "images/acorn-nine.png",
+    (CardRanks.VIII, CardSuits.ZALUDY): "images/acorn-eight.png",
+    (CardRanks.VII, CardSuits.ZALUDY): "images/acorn-seven.png",
+    
+    (CardRanks.A, CardSuits.SRDCE): "images/heart-ace.png",
+    (CardRanks.K, CardSuits.SRDCE): "images/heart-king.png",
+    (CardRanks.Q, CardSuits.SRDCE): "images/heart-ober.png",
+    (CardRanks.J, CardSuits.SRDCE): "images/heart-unter.png",
+    (CardRanks.X, CardSuits.SRDCE): "images/heart-ten.png",
+    (CardRanks.IX, CardSuits.SRDCE): "images/heart-nine.png",
+    (CardRanks.VIII, CardSuits.SRDCE): "images/heart-eight.png",
+    (CardRanks.VII, CardSuits.SRDCE): "images/heart-seven.png",
+    
+    (CardRanks.A, CardSuits.KULE): "images/bell-ace.png",
+    (CardRanks.K, CardSuits.KULE): "images/bell-king.png",
+    (CardRanks.Q, CardSuits.KULE): "images/bell-ober.png",
+    (CardRanks.J, CardSuits.KULE): "images/bell-unter.png",
+    (CardRanks.X, CardSuits.KULE): "images/bell-ten.png",
+    (CardRanks.IX, CardSuits.KULE): "images/bell-nine.png",
+    (CardRanks.VIII, CardSuits.KULE): "images/bell-eight.png",
+    (CardRanks.VII, CardSuits.KULE): "images/bell-seven.png",
+    
+    (CardRanks.A, CardSuits.LISTY): "images/leaf-ace.png",
+    (CardRanks.K, CardSuits.LISTY): "images/leaf-king.png",
+    (CardRanks.Q, CardSuits.LISTY): "images/leaf-ober.png",
+    (CardRanks.J, CardSuits.LISTY): "images/leaf-unter.png",
+    (CardRanks.X, CardSuits.LISTY): "images/leaf-ten.png",
+    (CardRanks.IX, CardSuits.LISTY): "images/leaf-nine.png",
+    (CardRanks.VIII, CardSuits.LISTY): "images/leaf-eight.png",
+    (CardRanks.VII, CardSuits.LISTY): "images/leaf-seven.png",
 }
 
 class Card:
@@ -81,26 +120,21 @@ class Card:
         return False
 
     def __str__(self):
-        # Mapování barev na ANSI escape kódy
-        """
-        color_map = {
-            CardSuits.SRDCE: '\033[35m', # Světle červená
-            CardSuits.KULE: '\033[31m',  # Světle červená
-            CardSuits.ZALUDY: '\033[33m', # Žlutá
-            CardSuits.LISTY: '\033[32m'   # Šedá/Černá
-        }
-        
-        reset_color = '\033[0m'
-        
-        # Získání barvy pro danou barvu karty
-        color_code = color_map.get(self.suit, reset_color)
-        """
-        
+        """Vrátí string dané karty."""
         return f"{self.rank.name} {self.suit.value}"
 
     def __repr__(self):
         """Metoda pro formální reprezentaci objektu, užitečná pro debugování."""
         return f"Card(rank={self.rank}, suit={self.suit})"
+    
+    def get_image(self) -> pygame.Surface:
+        """Vrátí pygame Surface s obrázkem karty."""
+        path = CARD_IMAGES[(self.rank, self.suit)]
+        
+        IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
+        image = pygame.image.load(IMG_DIR).convert_alpha()
+        CARD_WIDTH, CARD_HEIGHT = 50, 80
+        return pygame.transform.scale(image, (CARD_WIDTH, CARD_HEIGHT))
     
     def get_value(self, game_mode: Mode) -> int:
         """Vrátí číselnou hodnotu karty na základě herního módu."""
@@ -123,7 +157,7 @@ class Card:
             return betl_order[self.rank]
             
         raise ValueError("Neplatný herní mód")
-    
+
 def card_mappping(input_str: str) -> Card:
     suit_str, rank_str = input_str.split(" ")
     

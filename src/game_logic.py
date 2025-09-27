@@ -1,5 +1,5 @@
-from player import Player
-from cards import Card, CardSuits, Mode
+from .player import Player
+from .cards import Card, CardSuits, Mode
 
 class GameLogic:
     def __init__(self, num_players: int):

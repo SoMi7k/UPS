@@ -1,4 +1,4 @@
-from cards import Card, card_mappping, Mode, CardRanks, CardSuits
+from .cards import Card, Mode, CardRanks, CardSuits, card_mappping
 
 TRUMPH_CARDS = 7 
 class Hand: 
