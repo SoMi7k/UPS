@@ -133,7 +133,7 @@ class Card:
         
         IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
         image = pygame.image.load(IMG_DIR).convert_alpha()
-        CARD_WIDTH, CARD_HEIGHT = 50, 80
+        CARD_WIDTH, CARD_HEIGHT = 70, 100
         return pygame.transform.scale(image, (CARD_WIDTH, CARD_HEIGHT))
     
     def get_value(self, game_mode: Mode) -> int:

@@ -7,8 +7,11 @@
 - Neexistence hlasu => nelze hrát hry Sedma, Kilo, Stosedm
 - Povolené hry: Betl, Durch, Hra
 - Není ošetřeno: Ostrá v talonu, Pokud licitátor zahodí eso musí hrát vyšší hru
+- Není ošetřeno: Pokud vyhodí licitátor do talonu eso, musí hrát Betl/Durch
+- Nejsou body za poslední štych
 
-- přenastavení licitátora
-- přenastavení módu
-- dodělat talon betl/durch
-- check_player_cards
+- Přidat výpisy na obrazovku v případě neplatné karty
+- Přidat výpis pro licitátora, že co vybral za trumf
+- Reset
+- Eventuelně case: Betl -> špatný -> Betl
+- Přidat info který hráč je licitátor

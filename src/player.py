@@ -14,6 +14,16 @@ class Hand:
         except ValueError: 
             return False
         
+    def sort(self, game_mode: Mode):
+        """Seřadí karty v ruce podle barvy a hodnoty."""
+        suit_order = {
+            CardSuits.SRDCE: 0,
+            CardSuits.KULE: 1,
+            CardSuits.ZALUDY: 2,
+            CardSuits.LISTY: 3
+        }
+        self.cards.sort(key=lambda c: (suit_order[c.suit], c.get_value(game_mode)), reverse=True)
+        
     def find_card_in_hand(self, card_input: Card) -> bool: 
         for card in self.cards: 
             if card_input.__eq__(card): 
@@ -31,6 +41,9 @@ class Hand:
             if card.suit == suit: 
              return True 
         return False 
+    
+    def get_hand(self, mode: Mode):
+        return self.sort(mode)
     
     def remove_card(self, card_to_remove: Card) -> None: 
         self.cards.remove(card_to_remove) 
@@ -108,14 +121,14 @@ class Player:
     
     def pick_cards(self, count: int):
         """Returns a specific amount of cards."""
-        trumph_cards = []
+        cards = []
         if count == "all":
             count = len(self.hand.cards)
         for i in range(count):
             if i > len(self.hand.cards):
                 break
-            trumph_cards.append(self.hand.cards[i])
-        return trumph_cards
+            cards.append(self.hand.cards[i])
+        return cards
     
     def calculate_hand(self, mode: Mode) -> int:
         self.hand.calculate_hand(mode)
@@ -177,6 +190,10 @@ class Player:
 
         # --- 4. nemá ani barvu, ani trumf → může zahrát cokoli ---
         return True
+    
+    def sort_hand(self, mode=Mode.BETL):
+        """Seřadí karty v ruce podle barvy a hodnoty."""
+        self.hand.sort(mode)
             
     def __str__(self):
         return f"Player #{self.number}: {', '.join(str(card) for card in self.hand.cards)}"

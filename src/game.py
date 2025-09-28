@@ -4,7 +4,6 @@ from .game_logic import GameLogic
 
 ROZDAVANI_KARET = [7, 5, 5, 5]
 
-
 # Hlavní třída Game
 class Game:
     """
@@ -19,13 +18,15 @@ class Game:
         self.game_logic = GameLogic(num_players)
         self.played_cards = num_players * [None]
         self.state = State.ROZDÁNÍ_KARET
-        self.talon = 0
         self.higher_game = False
         self.higher_player = None
-        self.trick_suit = None
         self.starting_player_index = self.licitator.number
-        self.result_str = ""
         self.active_player = self.licitator
+        self.trick_suit = None
+        self.trick_winner = None
+        self.trick_cards = None
+        self.waiting_for_trick_end = False
+        self.result_str = ""
         
     def deal_cards(self):
         """Rozdá karty hráčům a licitátorovi."""
@@ -41,6 +42,8 @@ class Game:
             for player in self.players:
                 if player != self.licitator:
                     player.add_card(self.deck.deal_card())
+        for player in self.players:
+            player.sort_hand()
             
     def reset_game(self):
         """Resetuje hru na začátek: obnoví ruce a stav hráčů."""
@@ -50,7 +53,7 @@ class Game:
         
     def next_player(self):
         actual_player_index = self.active_player.number
-        self.active_player = self.players[(actual_player_index + 1) % self.num_players]     
+        self.active_player = self.players[(actual_player_index + 1) % self.num_players]          
     
     def game_state_1(self, card: Card):
         self.game_logic.trumph = card.suit
@@ -58,9 +61,8 @@ class Game:
         
     def game_state_2(self, card: Card):
         self.game_logic.move_to_talon(card, self.active_player)
-        self.talon += 1
         
-        if self.talon == 2:
+        if len(self.game_logic.talon) == 2:
             if self.higher_game and self.game_logic.mode == Mode.BETL and self.higher_player.number != self.num_players - 1:
                 self.talon = 0
                 self.state = State.LICITACE_DOBRY_SPATNY
@@ -144,50 +146,62 @@ class Game:
             self.licitator = player
             self.game_logic.move_from_talon(player)
             self.state = State.LICITACE_TALON
-    
+            
+    def check_stych(self) -> bool:
+        if self.waiting_for_trick_end:
+            for won_card in self.trick_cards:
+                self.players[self.trick_winner].add_won_card(won_card)
+            self.played_cards = self.num_players * [None]
+            self.trick_suit = None
+            self.starting_player_index = self.trick_winner
+            self.trick_winner = None
+            self.trick_cards = None
+            self.waiting_for_trick_end = False
+            self.active_player = self.players[self.starting_player_index]
+            return True
+        return False
+        
     def game_state_6(self, card: Card) -> bool:
         if self.trick_suit:
-            if not self.active_player.check_played_card(self.trick_suit, self.game_logic.trumph, card, self.played_cards, self.game_logic.mode):
+            if not self.active_player.check_played_card(
+                self.trick_suit, self.game_logic.trumph, card, self.played_cards, self.game_logic.mode
+            ):
                 return False
         else:
             self.trick_suit = card.suit
-            
+
         self.played_cards[self.active_player.number] = card
         self.active_player.hand.remove_card(card)
-        
+
+        # Štych kompletní?
         if all(c is not None for c in self.played_cards):
-            winner_index, c = self.game_logic.trick_decision(self.played_cards, self.starting_player_index)
-            print(f"Card won {c}")
-            for won_card in self.played_cards:
-                self.players[winner_index].add_won_card(won_card)
-                
-            self.played_cards = self.num_players * [None]
-            self.trick_suit = None
-            self.starting_player_index = winner_index
-                
+            winner_index, _ = self.game_logic.trick_decision(self.played_cards, self.starting_player_index)
+            self.trick_winner = winner_index
+            self.trick_cards = self.played_cards[:]  # snapshot karet pro vykreslení
+            self.waiting_for_trick_end = True
+
         if all(player.has_card_in_hand() is False for player in self.players):
             self.result_str = self.game_result(None)
             self.state = State.END
-        
+
         self.next_player()
         return True
-    
-    
+
     def game_state_7(self, card: Card):    
         if self.trick_suit:
             if not self.active_player.check_played_card(self.trick_suit, self.game_logic.trumph, card, self.played_cards, self.game_logic.mode):
                 return False
         else:
             self.trick_suit = card.suit
+
         self.played_cards[self.active_player.number] = card
         self.active_player.hand.remove_card(card)
         
         if all(c is not None for c in self.played_cards):
-            winner_index, c = self.game_logic.trick_decision(self.played_cards, self.starting_player_index)
-            print(f"Card won {c}")
-            self.played_cards = self.num_players * [None]
-            self.trick_suit = None
-            self.starting_player_index = winner_index
+            winner_index, _ = self.game_logic.trick_decision(self.played_cards, self.starting_player_index)
+            self.trick_winner = winner_index
+            self.trick_cards = self.played_cards[:]  # snapshot karet pro vykreslení
+            self.waiting_for_trick_end = True
             
             if self.game_logic.mode == Mode.BETL:
                 if winner_index == self.licitator.number:
@@ -219,9 +233,9 @@ class Game:
     def game_result(self, res: None|bool) -> str:
         if res is not None:
             if res:
-                return "Licitátor vyhrál!"
+                return f"Vyhrál Hráč #{self.licitator.number} jako licitátor!"
             else:
-                return "Licitátor prohrál!"
+                return f"Prohrál Hráč #{self.licitator.number} jako licitátor!"
         
         players_points = 0
         licitator_points = self.licitator.calculate_hand(self.game_logic.mode)
@@ -230,7 +244,9 @@ class Game:
                 players_points += player.calculate_hand(self.game_logic.mode)
                 
         if licitator_points > players_points:
-            return f"Vyhrál Licitátor v poměru {licitator_points} : {players_points}"
-            
-        return f"Vyhrál/i hráč/i v poměru {players_points} : {licitator_points}"
+            return f"Vyhrál Hráč #{self.licitator.number} jako licitátor v poměru {licitator_points} : {players_points}"
+        elif licitator_points == players_points:
+            return f"Remíza  v poměru Hráč #{self.licitator.number} jako licitátor {licitator_points} : Hráči proti {players_points}"
+        else:   
+            return f"Prohrál Hráč #{self.licitator.number} jako licitátor v poměru {licitator_points} : {players_points}"
     
