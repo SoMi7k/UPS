@@ -1,10 +1,13 @@
 from card import Card, card_mappping, State
 from player import Hand, Player
-from GUI.game import Game
+from game import Game
 
 class msgHandler:
-    def __init__(self):
+    def __init__(self,):
         self.game: Game
+    
+    def set_game(self, game: Game):
+        self.game = game
     
     def card_wrapper(self, card: Card) -> str:
         rank = card.rank
@@ -25,41 +28,38 @@ class msgHandler:
         player = Player(number, nickname, hand)
 
         self.game.add_player(player)
-        
-    def reader_playerCard(self, data: dict):
-        card = self.card_reader(data["card"])
-        player = data["player"]
-        
-        self.game.add_played_card({ "card": card, "player": player })
     
     def state_reader(self, data: dict):
-        result = {
-            "current_state": None,
-            "state_changed": bool(int(data.get("change_state", "0"))),
-            "trick_changed": bool(int(data.get("change_trick", "0"))),
-            "state_name": None
-        }
-        
         # Mapování čísla stavu na State enum
-        state_num = int(data.get("state", "0"))
-        try:
-            result["current_state"] = State(state_num)
-            result["state_name"] = result["current_state"].name
-        except ValueError:
-            result["current_state"] = None
-            result["state_name"] = "UNKNOWN"
-        
-        return result
-    
+        if data["change_state"]:
+            state_num = int(data["state"])
+            try:
+                self.game.state  = State(state_num)
+            except ValueError:
+                print("Stav hry se špatně načetl")
+                self.game.state  = State.CHYBOVÝ_STAV
+            
+        if data["gameStarted"]:
+            self.game.init_mode(data["mode"])
+            self.game.init_trump(data["trump"])
+            if data["isPlayedCards"]:
+                if data["change_trick"]:
+                    self.game.change_trick = True
+                for card in data["played_cards"]:
+                    new_card = self.card_reader(card)
+                    self.game.add_played_card(new_card)
+                    
     def status_reader(self, data: dict):
         pass
-    
+        
     def game_start_reader(self, data: dict):
         self.player_reader(data["client"])
         self.game.init_players(data)
-            
         
-
+    def game_result_reader(self, data: dict):
+        score = data["gameResult"]
+        self.game.evaluate_result(score)
+            
 if __name__ == "__main__":       
     data = {
         "client": {

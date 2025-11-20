@@ -5,8 +5,9 @@ from button import Button
 from inputbox import InputBox
 from client import Client, MessageType
 from msg_handler import msgHandler
-from GUI.game import Game
-from card import Card, State
+from game import Game
+from card import Card, State, Mode
+import time
 
 # Barvy
 WHITE = (255, 255, 255)
@@ -14,7 +15,7 @@ BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
 DARK_GRAY = (100, 100, 100)
 LIGHT_GRAY = (240, 240, 240)
-GREEN = (34, 139, 34)
+GREEN = (0, 255, 0)
 YELLOW = (200, 200, 0)
 DARK_YELLOW = (175, 175, 20)
 DARK_GREEN = (0, 100, 0)
@@ -26,7 +27,7 @@ GOLD = (255, 215, 0)
 WIDTH = 1200
 HEIGHT = 700
 CARD_WIDTH, CARD_HEIGHT = 70, 100
-IMG_DIR = "C:\\Users\\Lenka Jelinková\\Desktop\\UPS\\images\\wooden_table.jpg"
+IMG_DIR = "images\\wooden_table.jpg"
 
 class GameState(Enum):
     LOBBY = 0           # Zadávání IP/Port/Nickname
@@ -53,17 +54,17 @@ class GUI:
         
         # === STAV APLIKACE ===
         self.player_number = None       # Číslo hráče (0-2) z WELCOME
+        self.nickname = None            # Jméno hráče (Player) z WELCOME
         self.waiting_message = ""       # Text pro WAITING stav
         self.connected_players = 0      # Počet připojených hráčů
-        self.required_players = 2       # Potřebný počet hráčů
+        self.required_players = None    # Potřebný počet hráčů
+        self.invalid = None
+        self.waiting_for_trick = False
         
         # === HERNÍ DATA ===
         self.game = None                # Instance Game (dostaneme od serveru)
-        self.my_cards = self.game.players[self.player_number].hand.cards             # Karty v ruce
         self.played_cards = []          # Zahrané karty na stole
         self.active_rects = []          # Klikatelné oblasti
-        self.is_my_turn = False         # Zda jsem na tahu
-        self.game_state_data = {}       # Data o stavu hry
         
         # Lobby komponenty
         self.setup_lobby()
@@ -76,8 +77,8 @@ class GUI:
         self.background = self.create_background()
         
         # Message handler
-        self.game = Game()
-        self.msg_handler = msgHandler(self.game)
+        self.game = None
+        self.msg_handler = msgHandler()
     
     def create_background(self):
         """Vytvoří gradient pozadí nebo načte obrázek."""
@@ -141,8 +142,8 @@ class GUI:
         # ===== GAME_START - Hra začíná =====
         elif msg_type == MessageType.GAME_START:
             self.handle_game_start(data)
-            
-        # ===== CLIENT_DATA - Data o hráči (karty, atd.) =====
+        
+        # ===== GAME_START - Hra začíná =====
         elif msg_type == MessageType.CLIENT_DATA:
             self.handle_client_data(data)
         
@@ -157,6 +158,12 @@ class GUI:
         # ===== ERROR - Chybová zpráva =====
         elif msg_type == MessageType.ERROR:
             self.handle_error(data)
+            
+        elif msg_type == MessageType.INVALID:
+            self.handle_invalid(data)
+            
+        elif msg_type == MessageType.RESULT:
+            self.handle_result(data)
     
     # ============================================================
     # HANDLERS PRO JEDNOTLIVÉ TYPY ZPRÁV
@@ -166,26 +173,34 @@ class GUI:
         """Zpracuje WELCOME zprávu od serveru."""
         print("👋 Zpracovávám WELCOME...")
         
-        self.player_number = data.get("playerNumber")
-        print(f"✅ Jsem hráč #{self.player_number}")
+        # TODO - Dodělat reconnect
+        self.player_number = int(data["playerNumber"])
+        self.session_id = data["sessionId"]
+        self.lobby_id = int(data["lobby"])
+        self.required_players = int(data["requiredPlayers"])
+        print(f"✅ Moje session ID: #{self.session_id}\n \
+                ✅ Připojeno do lobby {self.lobby_id}\n \
+                ✅ Hra Mariáš pro {self.required_players}")
+        
+        self.game = Game(self.required_players, self.player_number)
+        self.msg_handler.set_game(self.game)
         
         self.state = GameState.CONNECTING
         
-        # Odeslat nickname serveru
-        nickname = self.nickname_input.text
-        print(f"📤 Posílám nickname: {nickname}")
-        
-        # TODO: Odeslat nickname (upravte podle vašeho protokolu)
-        self.client.send_message(MessageType.CONNECT, {"nickname": nickname})
+        self.nickname = self.nickname_input.text
+        self.client.send_message(MessageType.CONNECT, {"nickname": self.nickname})
+        print(f"📤 Posílám nickname: {self.nickname}")
     
     def handle_wait_lobby(self, data: dict):
         """Zpracuje WAIT_LOBBY zprávu."""
         print("⏳ Zpracovávám WAIT_LOBBY...")
         
         self.connected_players = data.get("current", 0)
-        self.required_players = data.get("required", 2)
         
         self.state = GameState.WAITING
+        
+        if self.game.state != State.LICITACE_TRUMF:
+            self.game = Game(self.required_players, self.player_number)
         
         print(f"⏳ Čekám na hráče: {self.connected_players}/{self.required_players}")
     
@@ -193,15 +208,10 @@ class GUI:
         """Zpracuje GAME_START zprávu."""
         print("🎮 Zpracovávám GAME_START...")
         print("🎮 HRA ZAČÍNÁ!")
-        
-        # Zpracování přes msg_handler
-        self.msg_handler.game_start_reader(data)
     
-    def handle_client_data(self, data: dict):
-        """Zpracuje CLIENT_DATA zprávu - dostaneme své karty."""
-        print("🃏 Zpracovávám CLIENT_DATA...")
-        
-        # Zpracování přes msg_handler
+        if not data:
+            self.state = GameState.CONNECTING
+            
         self.msg_handler.game_start_reader(data)
         
         # Přepnout do herního stavu
@@ -212,31 +222,36 @@ class GUI:
     def handle_game_state(self, data: dict):
         """Zpracuje STATE zprávu - aktualizace stavu hry."""
         print("🔄 Zpracovávám STATE...")
-        
-        self.game_state_data = data
-        
-        # TODO: Zpracovat stav hry
-        # - aktuální kolo
-        # - zahrané karty na stole
-        # - skóre
-        # - atd.
+        self.invalid = None
+        self.msg_handler.state_reader(data)
     
     def handle_your_turn(self, data: dict):
         """Zpracuje YOUR_TURN zprávu - je můj tah."""
         print("🔔 Je můj tah!")
+        self.game.active_player = True
         
-        self.is_my_turn = True
-    
+    def handle_result(self, data: dict):
+        """Zpracuje RESULT zprávu od serveru."""
+        print("🔔 Přišla zpráva o výsledku!")
+        self.msg_handler.game_result_reader(data)
+        
     def handle_error(self, data: dict):
         """Zpracuje ERROR zprávu od serveru."""
-        error_msg = data.get("message", "Neznámá chyba")
+        error_msg = data["message"]
         print(f"❌ CHYBA OD SERVERU: {error_msg}")
-        
-        # TODO: Zobrazit error dialog v GUI
+        msg = "ERROR: " + error_msg + "\n\n" + "Přepojuji do Lobby..."
+        self.show_error_messages(msg)
+        time.sleep(2)
         
         # Odpojit a vrátit do lobby
         self.client.disconnect()
         self.state = GameState.LOBBY
+        
+    def handle_client_data(self, data: dict):
+        self.msg_handler.player_reader(data["client"])
+        
+    def handle_invalid(self, data: dict):
+        self.invalid = data["data"]
     
     def handle_disconnect(self):
         """Callback při odpojení od serveru."""
@@ -306,7 +321,8 @@ class GUI:
                 self.offsets[card_id] = 0
             
             # Animace vysunutí karty při hover
-            if rect.collidepoint((mouse_x, mouse_y)) and self.is_my_turn:
+            if (rect.collidepoint((mouse_x, mouse_y)) and self.game.active_player and self.game.state != State.LICITACE_BETL_DURCH and
+                self.game.state != State.LICITACE_DOBRY_SPATNY):
                 target_offset = -20
             else:
                 target_offset = 0
@@ -331,7 +347,8 @@ class GUI:
             self.screen.blit(image, (rect.x, rect.y + current_offset))
             
             # Zvýraznění při hover (pouze pokud je můj tah)
-            if rect.collidepoint((mouse_x, mouse_y)) and self.is_my_turn:
+            if (rect.collidepoint((mouse_x, mouse_y)) and self.game.active_player and self.game.state != State.LICITACE_BETL_DURCH and
+                self.game.state != State.LICITACE_DOBRY_SPATNY):
                 highlight = pygame.Surface((CARD_WIDTH, CARD_HEIGHT), pygame.SRCALPHA)
                 highlight.fill((255, 255, 255, 30))
                 self.screen.blit(highlight, (rect.x, rect.y + current_offset))
@@ -364,11 +381,12 @@ class GUI:
                 rect = pygame.Rect(current_x, y, CARD_WIDTH, CARD_HEIGHT)
                 
                 # TODO: Zobrazit jméno hráče nebo číslo
-                color = (0, 128, 0) if False else (0, 0, 0)  # TODO: určit vítěze
-                text_width = self.font.size(f"Hráč {i}")
-                self.draw_text(f"Hráč {i}", self.font, color,
-                             (rect.x + (CARD_WIDTH // 2)) - (text_width[0] // 2), 
-                             rect.y - 30)
+                # TODO: určit vítěze
+                #color = (0, 128, 0) if False else (0, 0, 0)  
+                #text_width = self.font.size(f"Hráč {i}")
+                #self.draw_text(f"Hráč {i}", self.font, color,
+                #             (rect.x + (CARD_WIDTH // 2)) - (text_width[0] // 2), 
+                #             rect.y - 30)
                 
                 image = c.get_image()
                 self.screen.blit(image, (rect.x, rect.y))
@@ -392,7 +410,7 @@ class GUI:
             
             # Hover efekt
             if rect.collidepoint(mouse_pos):
-                color = BLUE
+                color = YELLOW
                 text_color = WHITE
             else:
                 color = LIGHT_GRAY
@@ -410,6 +428,151 @@ class GUI:
             button_rects.append((rect, text))
         
         return button_rects
+    
+    # ============================================================
+    # VYKRESLOVÁNÍ - HRA
+    # ============================================================
+    def show_active_player(self):
+        if self.game.active_player:
+            self.draw_text("Jste na tahu!", self.font_large, GREEN, y=20, center=True)
+        else:
+            self.draw_text("Čekejte na svůj tah...", self.font_large, GRAY, y=20, center=True)
+            
+    def show_game_results(self):
+        self.draw_text(self.result, self.font_large, BLACK, center=True)
+    
+    def show_cards(self, count: int|str) -> list:
+        return self.draw_cards(self.game.players[self.player_number].pick_cards(count))
+    
+    def show_invalid_move(self, msg: str):
+        self.draw_text(msg, self.font_large, RED, y=HEIGHT-CARD_HEIGHT-20, center=True)
+        
+    def show_error_messages(self, msg: str):
+        self.draw_text(msg, self.font_large, RED, y=20, center=True)
+        
+    def show_pick_trumph(self):
+        if self.game.active_player:
+            self.draw_text("Vyberte trumf!", self.font_large, GREEN, y=50, center=True)
+        else:
+            self.draw_text("Licitátor vybírá trumf.", self.font_large, GRAY, y=50, center=True)
+         
+    def show_removing_to_talon(self):
+        if self.game.active_player:
+            self.draw_text("Odhoďte kartu do talonu!", self.font_large, GREEN, y=50, center=True)
+        else:
+            self.draw_text("Hráč odhazuje karty do talonu.", self.font_large, GRAY, y=50, center=True)
+        
+    def show_mode_option(self):
+        if self.game.active_player:
+            self.draw_text("Vyberte hru!", self.font_large, GREEN, y=50, center=True)
+            self.active_rects = self.draw_selection_buttons([mode.name for mode in Mode])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+        
+    def show_first_bidding(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+           self.active_rects = self.draw_selection_buttons(["Dobrý", "Špatný"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+
+    def show_higher_game_option(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+            self.draw_text("Vyber hru: ", self.font_large, GREEN, y=50, center=True)
+            self.active_rects = self.draw_selection_buttons(["BETL", "DURCH"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+    
+    def show_second_bidding(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+            self.active_rects = self.draw_selection_buttons(["Špatný"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+            
+    def show_players_info(self):
+        height = 20
+        self.draw_text("Lobby 1 - Přehled hráčů:",  self.font_medium, BLACK, x=20, y=height)
+        # Moje jméno
+        if self.player_number is not None:
+            info_text = f"{self.nickname} (connected)"
+            self.draw_text(info_text, self.font_small, BLUE, x=30, y=height+30)
+            height += 50
+            
+            for i in range(self.required_players):
+                if i != self.player_number:
+                    self.draw_text(self.game.players[i].nickname + "(connected)", self.font_small, BLACK, x=30, y=height)
+                    height += 20
+                 
+    def show_game(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        text = f"{mode_name} {trumph.name if trumph else ''}"
+        text_width, text_height = self.font_medium.size(text)
+        x = WIDTH - text_width - 20
+        y = 20
+        rect = pygame.Rect(x, y, text_width, text_height)
+        pygame.draw.rect(self.screen, WHITE, rect)
+        self.draw_text(text, self.font_medium, RED, x=x, y=y, center=False)
+        pygame.draw.rect(self.screen, GRAY, rect, 1)
+
+        if self.game.played_cards:
+            self.draw_played_cards(self.game.played_cards)
+            
+        if self.invalid:
+            self.show_invalid_move(self.invalid)
+            
+        if self.game.change_trick:
+            if not self.waiting_for_trick:
+                # 1. První frame - spustíme časovač
+                self.waiting_for_trick = True
+                self.trick_display_start = pygame.time.get_ticks()
+            else:
+                # 2. Další framy - kontrolujeme čas
+                elapsed = pygame.time.get_ticks() - self.trick_display_start
+                if elapsed >= 3000:  # 3 sekundy
+                    # 3. Čas vypršel - pošleme zprávu
+                    self.game.handle_trick()
+                    self.client.send_message(MessageType.TRICK, {})
+                    self.waiting_for_trick = False
+            
+        if not self.game.active_player:
+            self.draw_text("Čekejte na váš tah.", self.font_large, GRAY, y=20, center=True)
+        else:
+            self.draw_text("Jste na tahu.", self.font_large, GREEN, y=20, center=True)
+        
+    def show_end_game(self):
+        self.draw_text(self.game.result, self.font_large, BLACK, y=50, center=True)
+        self.draw_text("Resetovat hru?", self.font_medium, RED, center=True)
+        self.active_rects = self.draw_selection_buttons(["ANO", "NE"],)
+        
+    def show(self):
+        """Vykreslí daný stav hry."""
+        if self.game.state == State.LICITACE_TRUMF:
+            self.show_pick_trumph()
+        elif self.game.state == State.LICITACE_TALON:
+            self.show_removing_to_talon()
+        elif self.game.state == State.LICITACE_HRA:
+            self.show_mode_option()  
+        elif self.game.state == State.LICITACE_DOBRY_SPATNY:
+            self.show_first_bidding()  
+        elif self.game.state == State.LICITACE_BETL_DURCH:
+            self.show_higher_game_option()
+        elif self.game.state == State.HRA:
+            self.show_game()  
+        elif self.game.state == State.BETL:
+            self.show_game()
+        elif self.game.state == State.DURCH:
+            self.show_game()
+        else:
+            self.show_end_game()
     
     # ============================================================
     # VYKRESLOVÁNÍ - Draw funkce pro různé stavy
@@ -436,10 +599,10 @@ class GUI:
         self.screen.blit(self.background, (0, 0))
         
         dots = "." * ((pygame.time.get_ticks() // 500) % 4)
-        self.draw_text(f"Připojování{dots}", self.font_large, WHITE, 
+        self.draw_text(f"Připojuji{dots}", self.font_large, WHITE, 
                       y=HEIGHT // 2 - 50, center=True)
         
-        self.draw_text("Čekám na odpověď serveru...", self.font_small, GRAY,
+        self.draw_text("Probíhá příprava hry...", self.font_small, GRAY,
                       y=HEIGHT // 2 + 20, center=True)
     
     def draw_waiting(self):
@@ -462,7 +625,7 @@ class GUI:
                       y=HEIGHT // 2 + 100, center=True)
         
         if self.player_number is not None:
-            info_text = f"Jste hráč #{self.player_number}"
+            info_text = f"Hráč #{self.player_number}"
             self.draw_text(info_text, self.font_small, YELLOW,
                           y=HEIGHT - 50, center=True)
             
@@ -472,36 +635,15 @@ class GUI:
         """Vykreslí herní obrazovku - HLAVNÍ HRA."""
         self.screen.blit(self.background, (0, 0))
         
-        # TODO: Wait 5 sec, after that send request for data, 3 failures -> disconnect 
-        while(not self.game.licitator):
-            # sleep
-            self.client.send_message(MessageType.GAME_START, {})
-            break
+        self.show_players_info()
         
-        # Informace o hráči
-        if self.player_number is not None:
-            info_text = f"Hráč #{self.player_number}"
-            self.draw_text(info_text, self.font_small, YELLOW, 20, 20)
-        
-        # Indikátor tahu
-        if self.game.active_player.number == self.player_number:
-            self.draw_text("Jste na tahu!", self.font_medium, GREEN,
-                          y=20, center=True)
+        if self.game.state == State.LICITACE_TRUMF and self.game.active_player:
+            self.active_rects = self.show_cards(7)
         else:
-            self.draw_text("Čekejte na svůj tah...", self.font_small, GRAY,
-                          y=20, center=True)
+            self.active_rects = self.show_cards("all")
+            
+        self.show()
         
-        # TODO: Vykreslení karet v ruce
-        self.active_rects = self.draw_cards(self.game.players[self.player_number].hand.cards)
-        print(self.active_rects)
-        
-        # TODO: Vykreslení zahraných karet na stole
-        self.draw_played_cards(self.played_cards)
-        
-        # Placeholder text
-        self.draw_text("Hra běží - implementujte vykreslení podle game stavu", 
-                      self.font_small, WHITE, y=HEIGHT // 2, center=True)
-    
     # ============================================================
     # EVENT HANDLING
     # ============================================================
@@ -523,19 +665,35 @@ class GUI:
         
         return None
     
+    def handle_waiting_event(self, event):
+        if self.quit_button.is_clicked(event):
+            pygame.quit()
+            sys.exit()
+        
+    
     def handle_playing_event(self, event):
-        """Zpracuje herní události (klikání na karty, tlačítka)."""
-        if event.type == pygame.MOUSEBUTTONDOWN and self.is_my_turn:
-            
-            # Kontrola kliknutí na karty/tlačítka
-            for rect, card_id in self.active_rects:
+        """Zpracuje herní události (klikání na karty nebo tlačítka)."""
+        if event.type == pygame.MOUSEBUTTONDOWN and self.game.active_player:
+            for rect, label in self.active_rects:
                 if rect.collidepoint(event.pos):
-                    print(f"🃏 Vybráno: {card_id}")
+                    print(f"🎯 Kliknuto na: {label}")
                     
-                    # TODO: Odeslat tah serveru
-                    self.client.send_message(MessageType.CARD, {"card": card_id})
+                    # Rozlišíme, jestli jde o kartu nebo volbu
+                    if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
+                        # 🃏 karta
+                        self.client.send_message(MessageType.CARD, {"card": label})
+                        print(f"📤 Odesílám kartu: {label}")
+                    else:
+                        # 🔘 tlačítko volby (např. "BETL", "DURCH", "Špatný", "ANO")
+                        if label == "ANO" or label == "NE":
+                            self.client.send_message(MessageType.RESET, {"label": label})
+                            print(f"📤 Odesílám volbu: {label}")
+                        else:                        
+                            self.client.send_message(MessageType.BIDDING, {"label": label})
+                            print(f"📤 Odesílám volbu: {label}")
                     
-                    self.is_my_turn = False  # Už nejsem na tahu
+                    # po kliknutí hráč už nehraje
+                    self.game.active_player = False
                     break
     
     # ============================================================
@@ -556,6 +714,9 @@ class GUI:
                     action = self.handle_lobby_event(event)
                     if action == "connect":
                         self.connect_to_server()
+                        
+                elif self.state == GameState.WAITING:
+                    action = self.handle_waiting_event(event)
                 
                 elif self.state == GameState.WAITING:
                     if action == "dissconect":

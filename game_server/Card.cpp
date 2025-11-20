@@ -25,8 +25,6 @@ static const std::map<std::string, CardRanks> RANK_MAP = {
 };
 
 // ============ Implementace třídy Card ============
-
-// KONSTRUKTOR
 // V Pythonu: def __init__(self, rank, suit):
 // V C++: používáme inicializační seznam (: rank(rank), suit(suit))
 // Je to efektivnější než přiřazení v těle konstruktoru
@@ -156,5 +154,14 @@ std::string suitToSymbol(CardSuits suit) {
         case CardSuits::ZALUDY: return "♣";
         case CardSuits::LISTY: return "♠";
         default: return "?";
+    }
+}
+
+std::string modeToString(Mode mode) {
+    switch (mode) {
+        case Mode::HRA:   return "HRA";
+        case Mode::BETL:  return "BETL";
+        case Mode::DURCH: return "DURCH";
+        default:          return "UNKNOWN";
     }
 }

@@ -34,7 +34,7 @@ enum class CardRanks {
     J = 4,
     IX = 3,
     VIII = 2,
-    VII = 1
+    VII = 1,
 };
 
 // Barvy karet
@@ -42,7 +42,7 @@ enum class CardSuits {
     SRDCE,   // ♥
     KULE,    // ♦
     ZALUDY,  // ♣
-    LISTY    // ♠
+    LISTY,   // ♠
 };
 
 // Třída reprezentující jednu kartu
@@ -75,5 +75,6 @@ Card cardMapping(const std::string& inputStr);
 std::string suitToString(CardSuits suit);
 std::string rankToString(CardRanks rank);
 std::string suitToSymbol(CardSuits suit);
+std::string modeToString(Mode mode);
 
 #endif // CARDS_HPP

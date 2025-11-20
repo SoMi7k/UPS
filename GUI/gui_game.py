@@ -1,7 +1,20 @@
 import pygame
-from card import CardSuits, Card, State, Mode
-from GUI.game import Game
-import sys
+from pygame import Surface
+from card import Card, State, Mode
+from game import Game
+from msg_handler import msgHandler
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (200, 200, 200)
+DARK_GRAY = (100, 100, 100)
+LIGHT_GRAY = (240, 240, 240)
+GREEN = (34, 139, 34)
+YELLOW = (255, 255, 0)
+DARK_GREEN = (0, 100, 0)
+RED = (220, 20, 60)
+BLUE = (70, 130, 180)
+GOLD = (255, 215, 0)
 
 #root = tk.Tk()
 WIDTH = 1200 #root.winfo_screenwidth()
@@ -11,215 +24,231 @@ CARD_WIDTH, CARD_HEIGHT = 70, 100
 IMG_DIR = "C:\\Users\\Lenka Jelinková\\Desktop\\UPS\\images\\wooden_table.jpg"
 
 class guiGame:
-    def __init__(self):
-        self.screen = self.init_gui()
-        self.font = pygame.font.SysFont("Arial", 28, bold=True)
-        self.clock = pygame.time.Clock()
+    def __init__(self, screen: Surface, game: Game, msg_handler: msgHandler, font):
+        self.screen = screen
+        self.msg_handler = msg_handler
+        self.game = game
+        
+        self.font = font
         self.middle = WIDTH // 2, HEIGHT // 2
-        self.game = Game()
         self.active_rects = None
-        self.offsets = {}  # { "A ♥": current_offset }
+        self.offsets = {}
         
-    def init_gui(self):
-        """Inicializace GUI."""
-        pygame.init()
-        screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        image = pygame.image.load(IMG_DIR).convert_alpha()
-        self.background = pygame.transform.scale(image, (WIDTH, HEIGHT))
-        pygame.display.set_caption("Marias - pygame demo")
-        return screen
+    # ============================================================
+    # VYKRESLOVÁNÍ - HELPER FUNKCE
+    # ============================================================
     
-    def reset_game(self):
-        """Vyresetuje hru."""
-        self.game = Game()
-
-    def draw_text(self, text: str, x: int | None = None, y: int | None = None, color=(0, 0, 0)):
-        """Obecná funkce pro vykreslení textu."""
-        img = self.font.render(text, True, color)
-
-        if x is None:
-            x = self.text_placing_middle(text)[0]
+    def draw_text(self, text, font, color, x=None, y=None, center=False):
+        """Vykreslí text s anti-aliasingem."""
+        text_surface = font.render(text, True, color)
+        text_rect = text_surface.get_rect()
         
-        if y is None:
-            y = self.text_placing_middle(text)[1]
-            
-        placing = (x, y)
-
-        self.screen.blit(img, placing)
-        
-    def color_mapping(self, suit: CardSuits):
-        """Namapuje barvu na jednotlivé karty."""
-        color_map = {
-            CardSuits.SRDCE: (255,0,0), # Červená
-            CardSuits.KULE: (204,0,102),  # Karmínová
-            CardSuits.ZALUDY: (0,0,0), # Černá
-            CardSuits.LISTY: (0,155,0) # Tmavě zelená
-        }
-        return color_map.get(suit)
-    
-    def text_placing_middle(self, text: str) -> tuple[int, int]:
-        """Vykreslý text na střed obrazovky."""
-        text_w, text_h = self.font.size(text)
-        text_x = (self.middle[0] - (text_w // 2)) 
-        text_y = (self.middle[1] - (text_h // 2))
-        return text_x, text_y
-    
-    def is_pointed(self, rect: pygame.Rect):
-        """Zeptá se jestli je na daný objekt namířena myš."""
-        mouse_x, mouse_y = pygame.mouse.get_pos()  # pozice myši
-        
-        if rect.collidepoint((mouse_x, mouse_y)):
-            color = (150, 150, 150)  # světlejší šedá
+        if center:
+            text_rect.center = (WIDTH // 2, y if y else HEIGHT // 2)
         else:
-            color = (255, 255, 255)  # tmavší šedá
-            
-        return color
+            text_rect.topleft = (x if x else 0, y if y else 0)
+        
+        self.screen.blit(text_surface, text_rect)
+        return text_rect
     
-    def draw_cards(self, cards: list[Card], x=20, y=HEIGHT-120) -> list[tuple[pygame.Rect, str]]:
+    def draw_cards(self, cards: list[Card], x=20, y=HEIGHT-140) -> list[tuple[pygame.Rect, str]]:
         """Vykreslí karty hráče s animací vysunutí."""
+        if not cards:
+            return []
+        
         rects = []
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        for i, c in enumerate(cards):
-            space_between_cards = 80
-            rect = pygame.Rect(x + i*space_between_cards, y, CARD_WIDTH, CARD_HEIGHT)
-            # identifikátor karty (aby měla svůj offset)
-            card_id = str(c)
+        space_between_cards = 80
+        
+        for i, card in enumerate(cards):
+            rect = pygame.Rect(x + i * space_between_cards, y, CARD_WIDTH, CARD_HEIGHT)
+            card_id = self.msg_handler.card_wrapper(card)
+            
             if card_id not in self.offsets:
-                self.offsets[card_id] = 0  # startovní offset
-
-            # zjistíme, jestli je myš nad kartou
-            if rect.collidepoint((mouse_x, mouse_y)):
-                target_offset = -15  # vysunout o 15 px nahoru
+                self.offsets[card_id] = 0
+            
+            # Animace vysunutí karty při hover
+            if rect.collidepoint((mouse_x, mouse_y)) and self.game.active_player:
+                target_offset = -20
             else:
-                target_offset = 0  # základní pozice
-
-            # plynulý přechod s dorovnáním
+                target_offset = 0
+            
             current_offset = self.offsets[card_id]
+            speed = 3
+            
             if current_offset < target_offset:
-                current_offset += 2
-                if current_offset > target_offset:
-                    current_offset = target_offset
+                current_offset = min(current_offset + speed, target_offset)
             elif current_offset > target_offset:
-                current_offset -= 2
-                if current_offset < target_offset:
-                    current_offset = target_offset
-
-            # uložíme nový offset
+                current_offset = max(current_offset - speed, target_offset)
+            
             self.offsets[card_id] = current_offset
-            # vykreslíme obrázek karty s offsetem
-            image = c.get_image()
+            
+            # Stín karty
+            shadow_rect = pygame.Rect(rect.x + 3, rect.y + current_offset + 3, 
+                                     CARD_WIDTH, CARD_HEIGHT)
+            pygame.draw.rect(self.screen, (0, 0, 0, 100), shadow_rect, border_radius=8)
+            
+            # Vykreslení karty
+            image = card.get_image()
             self.screen.blit(image, (rect.x, rect.y + current_offset))
-            # přidáme rect posunutý o offset (kvůli kolizím!)
-            rects.append((pygame.Rect(rect.x, rect.y + current_offset, CARD_WIDTH, CARD_HEIGHT), card_id))
-
-        self.active_rects = rects
+            
+            # Zvýraznění při hover (pouze pokud je můj tah)
+            if rect.collidepoint((mouse_x, mouse_y)) and self.game.active_player:
+                highlight = pygame.Surface((CARD_WIDTH, CARD_HEIGHT), pygame.SRCALPHA)
+                highlight.fill((255, 255, 255, 30))
+                self.screen.blit(highlight, (rect.x, rect.y + current_offset))
+            
+            rects.append((pygame.Rect(rect.x, rect.y + current_offset, 
+                                     CARD_WIDTH, CARD_HEIGHT), card_id))
+        
         return rects
     
     def draw_played_cards(self, cards: list[Card]):
+        """Vykreslí zahrané karty na stole."""
         space_between_cards = 60
         played_cards_only = [c for c in cards if c is not None]
         num_played_cards = len(played_cards_only)
+        
         if num_played_cards == 0:
-            return []
-
-        y = self.middle[1] - (CARD_HEIGHT // 2)
+            return
+        
+        middle = (WIDTH // 2, HEIGHT // 2)
+        y = middle[1] - (CARD_HEIGHT // 2)
+        
         total_card_width = num_played_cards * CARD_WIDTH
         total_space_width = (num_played_cards - 1) * space_between_cards
         total_occupied_width = total_card_width + total_space_width
         start_x = (WIDTH - total_occupied_width) // 2
         current_x = start_x
-
+        
         for i, c in enumerate(cards):
             if c is not None:
                 rect = pygame.Rect(current_x, y, CARD_WIDTH, CARD_HEIGHT)
-                # Pokud tento hráč vyhrál, změň barvu textu
-                color = (0, 128, 0) if self.game.trick_winner == i else (0, 0, 0)
+                
+                # TODO: Zobrazit jméno hráče nebo číslo
+                color = (0, 128, 0) if False else (0, 0, 0)  # TODO: určit vítěze
                 text_width = self.font.size(f"Hráč {i}")
-                self.draw_text(f"Hráč {i}", (rect.x + (CARD_WIDTH // 2)) - (text_width[0] // 2), rect.y - 30, color=color)
+                self.draw_text(f"Hráč {i}", self.font, color,
+                             (rect.x + (CARD_WIDTH // 2)) - (text_width[0] // 2), 
+                             rect.y - 30)
+                
                 image = c.get_image()
                 self.screen.blit(image, (rect.x, rect.y))
                 current_x += CARD_WIDTH + space_between_cards
     
     def draw_selection_buttons(self, labels, y_offset=50):
-        """Vykreslí tlačítka po licitování."""
-        BUTTON_WIDTH, BUTTON_HEIGHT = 120, 40
-        GAP = 30
+        """Vykreslí tlačítka výběru."""
+        BUTTON_WIDTH, BUTTON_HEIGHT = 140, 50
+        GAP = 20
+        
         total_width = len(labels) * BUTTON_WIDTH + (len(labels) - 1) * GAP
         start_x = (WIDTH - total_width) // 2
-        start_y = self.middle[1] + y_offset 
-        button_rects = [] # Nový seznam pro vrácení
-        self.active_cards = []
+        start_y = HEIGHT // 2 + y_offset
+        
+        button_rects = []
+        mouse_pos = pygame.mouse.get_pos()
+        
         for i, text in enumerate(labels):
             x = start_x + i * (BUTTON_WIDTH + GAP)
             rect = pygame.Rect(x, start_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-            pygame.draw.rect(self.screen, (80, 80, 80), rect, border_radius=10)
-            pygame.draw.rect(self.screen, (200, 200, 200), rect, 2, border_radius=10)
-            text_w, text_h = self.font.size(text)
-            text_x = rect.x + (BUTTON_WIDTH - text_w) // 2
-            text_y = rect.y + (BUTTON_HEIGHT - text_h) // 2
-            self.draw_text(text, text_x, text_y)
-            button_rects.append((rect, text))
             
-        self.active_rects = button_rects
-        return button_rects # Vracíme obdélníky
+            # Hover efekt
+            if rect.collidepoint(mouse_pos):
+                color = BLUE
+                text_color = WHITE
+            else:
+                color = LIGHT_GRAY
+                text_color = BLACK
+            
+            # Tlačítko
+            pygame.draw.rect(self.screen, color, rect, border_radius=10)
+            pygame.draw.rect(self.screen, DARK_GRAY, rect, 2, border_radius=10)
+            
+            # Text
+            text_surf = self.font_medium.render(text, True, text_color)
+            text_rect = text_surf.get_rect(center=rect.center)
+            self.screen.blit(text_surf, text_rect)
+            
+            button_rects.append((rect, text))
+        
+        return button_rects
     
     def show_active_player(self):
-        for player in self.game.players:
-            if player == self.game.active_player:
-                self.draw_text("Jsi na tahu", None, 20)
-            else:
-                self.draw_text(f"Hráč {self.game.active_player.nickname} je na tahu", None, 20)
+        if self.game.active_player:
+            self.draw_text("Jste na tahu!", self.font_large, GREEN, y=20, center=True)
+        else:
+            self.draw_text("Čekejte na svůj tah...", self.font_large, GRAY, y=20, center=True)
     
-    def show_cards(self, count: int|str):
-        self.draw_cards(self.game.active_player.pick_cards(count))
+    def show_cards(self, count: int|str) -> list:
+        return self.draw_cards(self.game.players[self.player_number].pick_cards(count))
     
     def show_pick_trumph(self):
-        print("Licitátor vybírá trumf.")
+        if self.game.active_player:
+            self.draw_text("Vyberte trumf!", self.font_large, GREEN, y=50, center=True)
+        else:
+            self.draw_text("Licitátor vybírá trumf.", self.font_large, GRAY, y=50, center=True)
          
     def show_removing_to_talon(self):
-        print("Licitátor odhazuje karty do talonu.")
+        if self.game.active_player:
+            self.draw_text("Odhoďte kartu do talonu!", self.font_large, GREEN, y=50, center=True)
+        else:
+            self.draw_text("Hráč odhazuje karty do talonu.", self.font_large, GRAY, y=50, center=True)
         
     def show_mode_option(self):
-        print("Licitátor vybírá hru.")
-        self.draw_selection_buttons([mode.name for mode in Mode])
+        if self.game.active_player:
+            self.draw_text("Vyberte hru!", self.font_large, GREEN, y=50, center=True)
+            self.active_rects = self.draw_selection_buttons([mode.name for mode in Mode])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
         
     def show_first_bidding(self):
         mode_name = self.game.mode.name
         trumph = self.game.trumph
-        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}")
-        self.draw_text(f"Hráč #{self.game.active_player.number}", None, 20)
-        self.draw_cards(self.game.active_player.pick_cards("all"))
-        self.draw_selection_buttons(["Dobrý", "Špatný"])
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+           self.active_rects = self.draw_selection_buttons(["Dobrý", "Špatný"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
 
     def show_higher_game_option(self):
-        print(f"Hráč #{self.game.active_player.number}", None, 20)
-        self.draw_selection_buttons(["BETL", "DURCH"])
-    
-    def show_second_bidding(self):
-        print(f"Hráč #{self.game.active_player.number}", None, 20)
-        self.draw_selection_buttons(["Špatný"])
-        
-    def show_game(self):
-        print(f"Hráč #{self.game.active_player.number}", None, 20)
         mode_name = self.game.mode.name
         trumph = self.game.trumph
-        print(f"{mode_name} {trumph.name if trumph else ""}", None, 60)
-        self.draw_played_cards(self.game.played_cards)
-        self.draw_cards(self.game.active_player.pick_cards("all"))
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+            self.draw_text("Vyber hru: ", self.font_large, GREEN, y=50, center=True)
+            self.active_rects = self.draw_selection_buttons(["BETL", "DURCH"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+    
+    def show_second_bidding(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        self.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.font_large, GREEN, center=True)
+        if self.game.active_player:
+            self.active_rects = self.draw_selection_buttons(["Špatný"])
+        else:
+            self.draw_text("Hráč licituje.", self.font_large, GRAY, y=50, center=True)
+        
+    def show_game(self):
+        mode_name = self.game.mode.name
+        trumph = self.game.trumph
+        text = f"{mode_name} {trumph.name if trumph else ""}"
+        self.draw_text(text, self.font_medium, RED, x=800, y=20, center=False)
+        rect = pygame.Rect(800, 20, self.font_medium.size(text)[0], self.font_medium.size(text)[1])
+        pygame.draw.rect(self.screen, WHITE, rect, 1)
+        if self.played_cards:
+            self.draw_played_cards(self.game.played_cards)
+            
+        if not self.game.active_player:
+            self.draw_text("Čekejte na váš tah.", self.font_large, GRAY, y=20, center=True)
         
     def show_end_game(self):
-        self.draw_text(self.game.result, None, 20)
-        self.draw_text("Resetovat hru?", None, 100)
-        self.draw_selection_buttons(["ANO", "NE"],)
+        self.draw_text(self.game.result, self.font_large, RED, y=20, center=True)
+        self.draw_text("Resetovat hru?", self.font_large, RED, center=True)
+        self.active_rects = self.draw_selection_buttons(["ANO", "NE"],)
         
-    def draw(self):
+    def show(self):
         """Vykreslí daný stav hry."""
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)  
-        overlay.fill((255, 255, 255, 30))
-        self.screen.blit(overlay, (0, 0))
-        self.screen.blit(self.background, (0, 0))
-        
-        # if client.number == active_player.number
         if self.game.state == State.LICITACE_TRUMF:
             self.show_pick_trumph()
         elif self.game.state == State.LICITACE_TALON:
@@ -238,45 +267,3 @@ class guiGame:
             self.show_game()
         else:
             self.show_end_game()
-        
-        pygame.display.flip() 
-    
-    def handle_event(self, event):
-        """Mapuje funkce pro logiku podle stavů v reakci na jednotlivé události hráče."""
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            selected_index = -1
-            if self.game.check_stych():
-                return
-            for i, r in enumerate(self.active_rects):
-                if r[0].collidepoint(event.pos):
-                    selected_index = i
-                    print(f"Hráč vybral {r[1]}")
-            
-            choosed_label = self.active_rects[selected_index]
-            player = self.game.active_player
-            if selected_index > -1:
-                match self.game.state:
-                    case State.LICITACE_TRUMF:
-                        self.game.game_state_1(player.hand.cards[selected_index])
-                    case State.LICITACE_TALON:
-                        self.game.game_state_2(player.hand.cards[selected_index])
-                    case State.LICITACE_HRA:
-                        self.game.game_state_3(choosed_label[1])
-                    case State.LICITACE_DOBRY_SPATNY:
-                        self.game.game_state_4(choosed_label[1])
-                    case State.LICITACE_BETL_DURCH:
-                        self.game.game_state_5(choosed_label[1])
-                    case State.HRA:
-                        self.game.game_state_6(player.hand.cards[selected_index])
-                    case State.BETL:
-                        self.game.game_state_7(player.hand.cards[selected_index])
-                    case State.DURCH:
-                        self.game.game_state_7(player.hand.cards[selected_index])
-                    case State.END:
-                        if self.game.game_state_8(r[1]):
-                            self.reset_game()
-                        else:
-                            pygame.quit()
-                            sys.exit()
-                    case _:
-                        raise Exception("Error State")

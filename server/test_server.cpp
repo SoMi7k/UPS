@@ -12,6 +12,30 @@
 #define QUEUE_LENGTH 10
 
 // ============================================================
+// KONSTRUKTOR A DESTRUKTOR
+// ============================================================
+
+GameServer::GameServer(int port)
+    : serverSocket(-1),
+      port(port),
+      running(false),
+      game(nullptr),
+      connectedPlayers(0) {
+
+    std::cout << "🔧 GameServer vytvořen na portu " << port << std::endl;
+}
+
+GameServer::~GameServer() {
+    std::cout << "🗑️ GameServer destruktor - provádím cleanup..." << std::endl;
+
+    if (running) {
+        stop();
+    }
+
+    cleanup();
+}
+
+// ============================================================
 // 1. INITIALIZE SOCKET - Inicializace serveru
 // ============================================================
 
@@ -34,9 +58,9 @@ bool GameServer::initializeSocket() {
     sockaddr_in serverAddress{};
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-    std::cout << "Adresa serveru: 127.0.0.1:" << port << std::endl;
+    std::cout << "Adresa serveru: ??? " << port << std::endl;
 
     if (bind(serverSocket,
              reinterpret_cast<sockaddr*>(&serverAddress),
@@ -68,8 +92,6 @@ void GameServer::acceptClients() {
         sockaddr_in clientAddress{};
         socklen_t clientLen = sizeof(clientAddress);
 
-        std::cout << "Čekám na klienta..." << std::endl;
-
         int clientSocket = accept(serverSocket,
                                   reinterpret_cast<sockaddr*>(&clientAddress),
                                   &clientLen);
@@ -77,8 +99,6 @@ void GameServer::acceptClients() {
         if (clientSocket < 0) {
             if (running) {
                 std::cerr << "Chyba při přijímání klienta" << std::endl;
-            } else {
-                std::cout << "Server se vypíná..." << std::endl;
             }
             continue;
         }
@@ -91,38 +111,45 @@ void GameServer::acceptClients() {
         std::cout << "  - IP: " << clientIP << std::endl;
         std::cout << "  - Port: " << ntohs(clientAddress.sin_port) << std::endl;
 
-        // Kontrola, zda máme volné místo
+        // Kontrola volného místa (ignorujeme dočasně odpojené)
+        int activeConnections = 0;
         {
             std::lock_guard<std::mutex> lock(clientsMutex);
-
-            if (connectedPlayers >= requiredPlayers) {
-                std::cout << "⚠ Hra je plná, odmítám klienta" << std::endl;
-                sendMessage(clientSocket, messageType::ERROR, "Game is full");
-                close(clientSocket);
-                continue;
+            for (auto* c : clients) {
+                if (c && !c->isDisconnected) {
+                    activeConnections++;
+                }
             }
         }
 
-        // Vytvoření info struktury pro klienta
+        if (activeConnections >= requiredPlayers) {
+            std::cout << "⚠ Hra je plná, odmítám klienta" << std::endl;
+            sendMessage(clientSocket, messageType::ERROR, "Game is full");
+            close(clientSocket);
+            continue;
+        }
+
+        // Vytvoření nového klienta
         auto* client = new ClientInfo{
             clientSocket,
-            connectedPlayers,
+            connectedPlayers, // Může být přepsáno při reconnectu
             std::string(clientIP),
             true,
-            std::thread()
+            std::thread(),
+            generateSessionId(),
+            std::chrono::steady_clock::now(),
+            false,
+            ""
         };
 
-        // Přidání klienta do seznamu
+        // Přidání do seznamu
         {
             std::lock_guard<std::mutex> lock(clientsMutex);
             clients.push_back(client);
             connectedPlayers++;
         }
 
-        std::cout << "✓ Hráč #" << client->playerNumber << " přidán" << std::endl;
-        std::cout << "  Připojeno: " << connectedPlayers << "/" << requiredPlayers << " hráčů" << std::endl;
-
-        // Spuštění vlákna pro obsluhu klienta
+        // Spuštění vlákna
         client->clientThread = std::thread(&GameServer::handleClient, this, client);
         client->clientThread.detach();
 
@@ -133,9 +160,8 @@ void GameServer::acceptClients() {
             std::cout << "\n🎮 Všichni hráči připojeni - spouštím hru!" << std::endl;
             startGame();
         }
-    }
 
-    std::cout << "Accept loop ukončen" << std::endl;
+    }
 }
 
 // ============================================================
@@ -147,53 +173,91 @@ void GameServer::handleClient(ClientInfo* client) {
 
     // ===== KROK 1: Poslání WELCOME zprávy =====
     nlohmann::json welcomeData = {};
-    welcomeData["data"]["playerNumber"] = client->playerNumber;
+    welcomeData["playerNumber"] = client->playerNumber;
+    welcomeData["sessionId"] = client->sessionId;
+    welcomeData["lobby"] = 1;
+    welcomeData["requiredPlayers"] = requiredPlayers;
     sendMessage(client->socket, messageType::WELCOME, welcomeData.dump());
-    std::cout << "  -> WELCOME odesláno hráči #" << client->playerNumber << std::endl;
 
-    // ===== KROK 2: Čekání na NICKNAME od klienta =====
-    std::string nicknameMessage = receiveMessage(client->socket);
-
-    if (nicknameMessage.empty()) {
-        std::cerr << "⚠ Hráč #" << client->playerNumber << " se odpojil před odesláním nicknamu" << std::endl;
-        disconnectClient(client);
+    // ===== KROK 2: Čekání na NICKNAME nebo RECONNECT =====
+    std::string initialMessage = receiveMessage(client->socket);
+    if (initialMessage.empty()) {
+        std::cerr << "⚠ Hráč #" << client->playerNumber << " se odpojil před odesláním zprávy" << std::endl;
+        handleClientDisconnection(client);
         return;
     }
 
-    // TODO: Parsovat JSON a získat nickname
-    // MÍSTO PRO VÁŠ KÓD:
-    nlohmann::json nicknameJson = deserialize(nicknameMessage);
-    std::string nickname = nicknameJson["data"]["nickname"];
-
-    {
-        std::lock_guard<std::mutex> lock(gameMutex);
-        game->initPlayer(client->playerNumber, nickname);
+    nlohmann::json msgJson = deserialize(initialMessage);
+    if (msgJson.empty()) {
+        handleClientDisconnection(client);
+        return;
     }
+    std::string msgType = msgJson["type"];
 
-    std::cout << "  -> Nickname přijat od hráče #" << client->playerNumber << std::endl;
+    // Kontrola zda jde o RECONNECT
+    if (msgType == messageType::CONNECT && msgJson["data"].contains("sessionId")) {
+        std::string sessionId = msgJson["data"]["sessionId"];
+        std::cout << "🔄 Pokus o reconnect se session ID: " << sessionId << std::endl;
 
-    // ===== KROK 3: Pokud ještě nemáme všechny hráče, pošleme WAIT_LOBBY =====
-    if (connectedPlayers < requiredPlayers) {
-        // TODO: Poslat WAIT_LOBBY zprávu
-        // MÍSTO PRO VÁŠ KÓD:
+        ClientInfo* oldClient = findDisconnectedClient(sessionId);
+        if (oldClient && reconnectClient(oldClient, client->socket)) {
+            std::cout << "✅ Hráč #" << oldClient->playerNumber << " úspěšně reconnectnut" << std::endl;
+
+            // Pošleme aktuální stav hry
+            sendGameStateToPlayer(oldClient->playerNumber);
+            nlohmann::json clientData;
+            clientData["client"] = serializePlayer(oldClient->playerNumber);
+            sendToPlayer(oldClient->playerNumber, messageType::CLIENT_DATA, clientData.dump());
+
+            // Pokračujeme se starým clientem
+            client = oldClient;
+        } else {
+            std::cerr << "❌ Reconnect selhal" << std::endl;
+            nlohmann::json errorData;
+            errorData["message"] = "Reconnect failed - session expired or invalid";
+            sendMessage(client->socket, messageType::ERROR, errorData.dump());
+            disconnectClient(client);
+            return;
+        }
+    } else {
+        // Běžný nový hráč
+        std::string nickname = msgJson["data"]["nickname"];
+        client->nickname = nickname;
+
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            game->initPlayer(client->playerNumber, nickname);
+        }
+
+        std::cout << "  -> Nickname přijat od hráče #" << client->playerNumber << std::endl;
+
         nlohmann::json waitData;
         waitData["current"] = connectedPlayers;
-        waitData["required"] = requiredPlayers;
-        sendMessage(client->socket, messageType::WAIT_LOBBY, waitData.dump());
 
-        std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+        if (connectedPlayers < requiredPlayers) {
+            sendMessage(client->socket, messageType::WAIT_LOBBY, waitData.dump());
+            std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+        }
     }
 
-    // ===== KROK 4: Hlavní smyčka - příjem zpráv od klienta =====
+    // ===== KROK 3: Hlavní smyčka =====
     std::cout << "  -> Vstupuji do příjmací smyčky pro hráče #" << client->playerNumber << std::endl;
 
     while (running && client->connected) {
         std::string message = receiveMessage(client->socket);
+        if (message.empty()) {
+            disconnectClient(client);
+            return;
+        }
 
         if (message.empty()) {
-            std::cout << "\n⚠ Hráč #" << client->playerNumber << " se odpojil" << std::endl;
+            std::cout << "\n⚠ Hráč #" << client->playerNumber << " ztratil spojení" << std::endl;
+            handleClientDisconnection(client); // ZMĚNA
             break;
         }
+
+        // Aktualizace last seen
+        client->lastSeen = std::chrono::steady_clock::now();
 
         // Odstranění koncových znaků
         while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) {
@@ -202,12 +266,10 @@ void GameServer::handleClient(ClientInfo* client) {
 
         std::cout << "\n📨 Od hráče #" << client->playerNumber << ": \"" << message << "\"" << std::endl;
 
-        // Zpracování zprávy
         try {
             processClientMessage(client, message);
         } catch (const std::exception& e) {
             std::cerr << "❌ Výjimka při zpracování zprávy: " << e.what() << std::endl;
-
             nlohmann::json errorData;
             errorData["message"] = "Interní chyba serveru";
             sendMessage(client->socket, messageType::ERROR, errorData.dump());
@@ -215,7 +277,6 @@ void GameServer::handleClient(ClientInfo* client) {
     }
 
     std::cout << "\n<<< Vlákno pro hráče #" << client->playerNumber << " končí >>>" << std::endl;
-    disconnectClient(client);
 }
 
 // ============================================================
@@ -227,34 +288,49 @@ void GameServer::startGame() {
     std::cout << "🎮 SPOUŠTÍM HERNÍ LOGIKU 🎮" << std::endl;
     std::cout << std::string(50, '=') << std::endl;
 
-    // ===== KROK 1: Inicializace hry a rozdání karet =====
-    std::cout << "\n🃏 Rozdávám karty hráčům..." << std::endl;
+    // ===== KROK 1: Posílám 1. GAME_START =====
+    std::cout << "\n📢 Hra se načítá..." << std::endl;
 
-    {
-        std::lock_guard<std::mutex> lock(gameMutex);
-        game->defineLicitator(std::rand() % requiredPlayers);
-        game->dealCards();
+    for (int playerNum = 0; playerNum < requiredPlayers; playerNum++) {
+        sendToPlayer(playerNum, messageType::GAME_START, {});
+        std::cout << "✓ Hráč dostal záznam o začátku hry " << playerNum << std::endl;
     }
 
+    // ===== KROK 2: Čekání 5 sekund =====
+    std::cout << "\n⏳ Čekám 5 sekund před rozdáním karet..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::cout << "✓ Čekání dokončeno" << std::endl;
+
+    // ===== KROK 3 Inicializace hry a rozdání karet =====
+    std::cout << "\n🃏 Rozdávám karty hráčům..." << std::endl;
+    {
+        std::lock_guard<std::mutex> lock(gameMutex);
+        game->defineLicitator(0);
+        game->dealCards();
+    }
     std::cout << "✓ Karty rozdány" << std::endl;
-    
-    // ===== KROK 2: Odeslat GAME_START všem hráčům =====
+
+    // ===== KROK 4: Odeslat GAME_START s daty =====
     std::cout << "\n📢 Posílám GAME_START všem hráčům..." << std::endl;
 
     for (int playerNum = 0; playerNum < requiredPlayers; playerNum++) {
         nlohmann::json gameData = serializeGameStart(playerNum);
         sendToPlayer(playerNum, messageType::GAME_START, gameData.dump());
-        std::cout << "✓ GAME_START odesláno" << std::endl;
+        std::cout << "✓ GAME_START odesláno hráči " << playerNum << std::endl;
     }
-
-    // ===== KROK 3: Čekání 5 sekund =====
-    std::cout << "\n⏳ Čekám 5 sekund před rozdáním karet..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    std::cout << "✓ Čekání dokončeno" << std::endl;
 
     std::cout << "\n" << std::string(50, '=') << std::endl;
     std::cout << "✅ Hra úspěšně spuštěna!" << std::endl;
     std::cout << std::string(50, '=') << std::endl;
+
+    // ===== KROK 5: Odeslat GAME_STATE =====
+    std::cout << "\n📢 Posílám GAME_STATE všem hráčům..." << std::endl;
+
+    for (int playerNum = 0; playerNum < requiredPlayers; playerNum++) {
+        sendGameStateToPlayer(playerNum);
+        std::cout << "✓ GAME_START odesláno hráči " << playerNum << std::endl;
+    }
+    game->stateChanged = 0;
 }
 
 // ============================================================
@@ -347,8 +423,8 @@ nlohmann::json GameServer::deserialize(const std::string& msg) {
         if (parsed.contains("data")) {
             std::cout << "📥 Data: " << parsed["data"] << std::endl;
         }
-
         return parsed;
+
     } catch (const std::exception& e) {
         std::cerr << "❌ Chyba při parsování JSON: " << e.what() << std::endl;
         return nlohmann::json{};
@@ -358,34 +434,36 @@ nlohmann::json GameServer::deserialize(const std::string& msg) {
 // ============================================================
 // 6. POMOCNÉ FUNKCE - DEFINICE (doplníte logiku)
 // ============================================================
-
-void GameServer::processClientMessage(ClientInfo* client, const std::string& message) {
-    // TODO: Implementovat zpracování různých typů zpráv
-    // MÍSTO PRO VÁŠ KÓD:
-
-    nlohmann::json msg = deserialize(message);
-
-    if (msg.empty()) {
-        std::cerr << "⚠ Nepodařilo se parsovat zprávu" << std::endl;
-        return;
-    }
-
-    std::string msgType = msg["type"];
-
-    std::cout << "🔄 Zpracovávám zprávu typu: " << msgType << std::endl;
-
-    // Zde přidáte logiku podle typu zprávy
-    // if (msgType == messageType::CARD) { ... }
-    // if (msgType == messageType::BIDDING) { ... }
-    // atd.
-}
-
 nlohmann::json GameServer::serializeGameState() {
-    // TODO: Implementovat serializaci stavu hry
     nlohmann::json state;
     state["state"] = game->getState();
-    state["change_trick"] = state["change_trick"] = (game->getPlayedCards().size() == 3) ? 1 : 0;
-    state["change_state"] = "0";
+    state["change_state"] = game->stateChanged;
+    state["gameStarted"] = game->gameStarted;
+
+    if (game->gameStarted) {
+        state["mode"] = modeToString(game->getGameLogic().getMode());
+        state["trump"] = suitToString(game->getGameLogic().getTrumph());
+        state["isPlayedCards"] = 0;
+
+        if (!game->getPlayedCards().empty()) {
+            state["isPlayedCards"] = 1;
+            nlohmann::json cardsArray = nlohmann::json::array();
+            for (auto map : game->getPlayedCards()) {
+                std::cout << "PlayedCard  - " << map.second.toString() << std::endl;
+                std::string str_card = map.second.toString();
+                cardsArray.push_back(str_card);
+            }
+            state["played_cards"] = cardsArray;
+            state["change_trick"] = (game->isWaitingForTrickEnd()) ? 1 : 0;
+            /*
+            if (game->getPlayedCards().size() == requiredPlayers) {
+                state["winner"] = game->getTrickWinner();
+            } else {
+                state["winner"] = game->getTrickWinner();
+            }
+            */
+        }
+    }
 
     return state;
 }
@@ -410,55 +488,35 @@ nlohmann::json GameServer::serializeGameStart(int playerNumber) {
 }
 
 nlohmann::json GameServer::serializePlayer(int playerNumber) {
-    nlohmann::json hand;
+    nlohmann::json client;
 
     Player* player = game->getPlayer(playerNumber);
     if (player == nullptr) {
-        hand["error"] = "Invalid player number";
-        return hand;
+        client["error"] = "Invalid player number";
+        return client;
     }
 
     // Příklad serializace – uprav podle struktury Player
-    hand["number"] = player->getNumber();
-    hand["nickname"] = player->getNick();
+    client["number"] = player->getNumber();
+    client["nickname"] = player->getNick();
 
     // Pokud má hráč ruku (karty apod.)
     nlohmann::json cards = nlohmann::json::array();
     for (const auto& card : player->getHand().getCards()) {
+        //std::cout << "  - " << card.toString() << std::endl;
         cards.push_back(card.toString());
     }
-    hand["hand"] = cards;
+    client["hand"] = cards;
 
-    return hand;
+    return client;
 }
 
-nlohmann::json GameServer::serializeCard(const Card& card) {
-    std::string msg = card.toString();
+nlohmann::json GameServer::serializeInvalid(int playerNumber) {
+    nlohmann::json msg;
+    Player* player = game->getPlayer(playerNumber);
+    msg["data"] = player->getInvalidMove();
+
     return msg;
-}
-
-// ============================================================
-// KONSTRUKTOR A DESTRUKTOR
-// ============================================================
-
-GameServer::GameServer(int port)
-    : serverSocket(-1),
-      port(port),
-      running(false),
-      game(nullptr),
-      connectedPlayers(0) {
-
-    std::cout << "🔧 GameServer vytvořen na portu " << port << std::endl;
-}
-
-GameServer::~GameServer() {
-    std::cout << "🗑️ GameServer destruktor - provádím cleanup..." << std::endl;
-
-    if (running) {
-        stop();
-    }
-
-    cleanup();
 }
 
 // ============================================================
@@ -482,6 +540,10 @@ void GameServer::start() {
     // Spuštění accept threadu
     std::cout << "\n🔄 Spouštím accept thread..." << std::endl;
     acceptThread = std::thread(&GameServer::acceptClients, this);
+
+    // Spuštění timeout checkeru
+    std::thread timeoutThread(&GameServer::checkDisconnectedClients, this);
+    timeoutThread.detach();
 
     std::cout << "\n✅ Server úspěšně spuštěn!" << std::endl;
     std::cout << "📡 Naslouchám na portu " << port << std::endl;
@@ -648,6 +710,15 @@ void GameServer::disconnectClient(ClientInfo* client) {
     std::cout << std::string(50, '-') << std::endl;
 
     // TODO: Pokud chcete, můžete zde přidat logiku pro:
+    {
+        nlohmann::json waitData;
+        waitData["current"] = connectedPlayers;
+        broadcastMessage(messageType::WAIT_LOBBY, waitData.dump());
+        std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+    }
+
+    game->resetGame();
+
     // - Ukončení hry pokud se odpojí hráč uprostřed
     // - Reset serveru
     // - atd.
@@ -656,13 +727,16 @@ void GameServer::disconnectClient(ClientInfo* client) {
 // ============================================================
 // PROCESS CLIENT MESSAGE - Zpracování zpráv od klienta
 // ============================================================
-/*
+
 void GameServer::processClientMessage(ClientInfo* client, const std::string& message) {
     nlohmann::json msg = deserialize(message);
+    if (msg.empty()) {
+        disconnectClient(client);
+        return;
+    }
 
     if (msg.empty()) {
         std::cerr << "⚠ Nepodařilo se parsovat zprávu" << std::endl;
-
         nlohmann::json errorData;
         errorData["message"] = "Neplatný formát zprávy";
         sendMessage(client->socket, messageType::ERROR, errorData.dump());
@@ -670,93 +744,195 @@ void GameServer::processClientMessage(ClientInfo* client, const std::string& mes
     }
 
     std::string msgType = msg["type"];
-    std::cout << "🔄 Zpracovávám zprávu typu: " << msgType << " od hráče #" << client->playerNumber << std::endl;
+    nlohmann::json data = msg["data"];
+    std::cout << "🔄 Zpracovávám zprávu typu: " << msgType
+              << " od hráče #" << client->playerNumber << std::endl;
 
-    // TODO: Implementovat podle vašich potřeb
-    // Zde je základní struktura:
 
+    // ===== HEARTBEAT =====
     if (msgType == messageType::HEARTBEAT) {
-        // Heartbeat - pouze potvrdíme příjem
         std::cout << "💓 Heartbeat od hráče #" << client->playerNumber << std::endl;
-        // Neposíláme odpověď, klient jen kontroluje že je spojení aktivní
+        client->lastSeen = std::chrono::steady_clock::now();
     }
+
+    // ===== READY =====
     else if (msgType == messageType::READY) {
-        // Hráč je připraven
         std::cout << "✅ Hráč #" << client->playerNumber << " je připraven" << std::endl;
 
         nlohmann::json okData;
         okData["message"] = "Připraven přijat";
         sendMessage(client->socket, messageType::OK, okData.dump());
     }
+
+    // ===== TRICK =====
+    else if (msgType == messageType::TRICK) {
+        std::unique_lock<std::mutex> lock(trickMutex);
+        trickResponses++;
+
+        std::cout << "✓ TRICK od hráče #" << client->playerNumber
+                  << " (" << trickResponses << "/" << requiredPlayers << ")" << std::endl;
+
+        if (trickResponses == requiredPlayers) {
+            std::cout << "🎯 Všichni hráči potvrdili štych" << std::endl;
+
+            {
+                std::lock_guard<std::mutex> gameLock(gameMutex);
+                game->resetTrick(game->getTrickWinner());
+            }
+
+            trickResponses = 0;
+            notifyActivePlayer();
+        }
+    }
+
+    // ===== CARD =====
     else if (msgType == messageType::CARD) {
-        // Hráč zahrál kartu
-        std::cout << "🃏 Hráč #" << client->playerNumber << " zahrál kartu" << std::endl;
+        Card card = cardMapping(data["card"]);
+        std::string null;
+        bool result;
 
-        // TODO: Zpracovat tah
-        // std::string cardStr = msg["data"]["card"];
-        // game->playCard(client->playerNumber, cardStr);
-        // sendGameState();
-        // notifyActivePlayer();
+        int actualActivePlayerNumber;
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            actualActivePlayerNumber = game->getActivePlayer()->getNumber();
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            result = game->gameHandler(card, null);
+        }
+
+        if (result) {
+            std::vector<Player*> players;
+            {
+                std::lock_guard<std::mutex> lock(gameMutex);
+                players = game->getPlayers();
+            }
+
+            for (auto player : players) {
+                sendGameStateToPlayer(player->getNumber());
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(gameMutex);
+                game->stateChanged = 0;
+            }
+            nlohmann::json clientData;
+            clientData["client"] = serializePlayer(actualActivePlayerNumber);
+            sendToPlayer(actualActivePlayerNumber, messageType::CLIENT_DATA, clientData.dump());
+
+            if (game->getState() == State::END) {
+                nlohmann::json gameResult;
+                gameResult["gameResult"] = game->getResult();
+                sendToPlayer(client->playerNumber, messageType::RESULT, gameResult.dump());
+            }
+
+            if (!game->isWaitingForTrickEnd()) {
+                notifyActivePlayer();
+            }
+        } else {
+            int activePlayerNumber;
+            {
+                std::lock_guard<std::mutex> lock(gameMutex);
+                activePlayerNumber = game->getActivePlayer()->getNumber();
+            }
+            sendInvalidPlayer(activePlayerNumber);
+            notifyActivePlayer();
+        }
     }
+
+    // ===== BIDDING =====
     else if (msgType == messageType::BIDDING) {
-        // Hráč licitoval
-        std::cout << "💰 Hráč #" << client->playerNumber << " licituje" << std::endl;
+        std::string label = data["label"];
 
-        // TODO: Zpracovat licitaci
-        // int bid = msg["data"]["bid"];
-        // game->processBid(client->playerNumber, bid);
+        {
+            std::cout << "Mění se stav hry..." << std::endl;
+            std::lock_guard<std::mutex> lock(gameMutex);
+            Card* card = nullptr;
+            game->gameHandler(*card, label);
+            std::cout << "Změna dokončena." << std::endl;
+        }
+
+        std::vector<Player*> players;
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            players = game->getPlayers();
+        }
+
+        for (auto player : players) {
+            sendGameStateToPlayer(player->getNumber());
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(gameMutex);
+            game->stateChanged = 0;
+        }
+
+        if (game->getState() == State::LICITACE_TALON) {
+            nlohmann::json clientData;
+            clientData["client"] = serializePlayer(game->getActivePlayer()->getNumber());
+            sendToPlayer(game->getActivePlayer()->getNumber(), messageType::CLIENT_DATA, clientData.dump());
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        notifyActivePlayer();
     }
+
+    // ===== RESET =====
     else if (msgType == messageType::RESET) {
-        // Hráč chce reset
         std::cout << "🔄 Hráč #" << client->playerNumber << " žádá o reset" << std::endl;
+        std::string reset = data["reset"];
 
-        // TODO: Implementovat reset logiku
+        if (reset == "ANO") {
+            // TODO - Přesun clienta do lobby
+            // TODO - Reset Hry
+            disconnectClient(client);
+        } else {
+            disconnectClient(client);
+        }
     }
+
+    // ===== DISCONNECT =====
     else if (msgType == messageType::DISCONNECT) {
-        // Hráč se chce odpojit
         std::cout << "👋 Hráč #" << client->playerNumber << " se odpojuje" << std::endl;
-        client->connected = false;
+        disconnectClient(client);
     }
+
+    // ===== CONNECT =====
+    else if (msgType == messageType::CONNECT) {
+        std::cout << "📨 Přijato CONNECT" << std::endl;
+    }
+
+    // ===== UNKNOWN =====
     else {
-        // Neznámý typ zprávy
         std::cerr << "⚠ Neznámý typ zprávy: " << msgType << std::endl;
 
         nlohmann::json errorData;
         errorData["message"] = "Neznámý typ zprávy";
         errorData["receivedType"] = msgType;
-        sendMessage(client->socket, messageType::INVALID, errorData.dump());
+        sendMessage(client->socket, messageType::ERROR, errorData.dump());
     }
 }
-*/
+
 // ============================================================
 // HERNÍ LOGIKA - SendGameState, NotifyActivePlayer
 // ============================================================
 
-void GameServer::sendGameState() {
-    std::cout << "📤 Posílám stav hry všem hráčům..." << std::endl;
+void GameServer::sendInvalidPlayer(int playerNumber) {
+    std::cout << "📤 Posílám neplatný tah hráči #" << playerNumber << std::endl;
 
     std::lock_guard<std::mutex> lock(gameMutex);
 
-    if (!game) {
-        std::cerr << "⚠ Hra není inicializována" << std::endl;
-        return;
-    }
+    nlohmann::json msg = serializeInvalid(playerNumber);
+    sendToPlayer(playerNumber, messageType::INVALID, msg.dump());
 
-    nlohmann::json gameState = serializeGameState();
-    broadcastMessage(messageType::STATE, gameState.dump());
-
-    std::cout << "✅ Stav hry odeslán" << std::endl;
+    std::cout << "✅ Chybný tah odeslán hráči #" << playerNumber << std::endl;
 }
 
 void GameServer::sendGameStateToPlayer(int playerNumber) {
     std::cout << "📤 Posílám stav hry hráči #" << playerNumber << std::endl;
 
     std::lock_guard<std::mutex> lock(gameMutex);
-
-    if (!game) {
-        std::cerr << "⚠ Hra není inicializována" << std::endl;
-        return;
-    }
 
     nlohmann::json gameState = serializeGameState();
     sendToPlayer(playerNumber, messageType::STATE, gameState.dump());
@@ -772,9 +948,7 @@ void GameServer::notifyActivePlayer() {
         return;
     }
 
-    // TODO: Získat aktivního hráče z game
-    // int activePlayer = game->getActivePlayer();
-    int activePlayer = 0; // Placeholder
+    int activePlayer = game->getActivePlayer()->getNumber();
 
     std::cout << "🔔 Notifikuji hráče #" << activePlayer << " že je na tahu" << std::endl;
 
@@ -785,4 +959,110 @@ void GameServer::notifyActivePlayer() {
     sendToPlayer(activePlayer, messageType::YOUR_TURN, turnData.dump());
 
     std::cout << "✅ YOUR_TURN odesláno hráči #" << activePlayer << std::endl;
+}
+
+std::string GameServer::generateSessionId() {
+    static int counter = 0;
+    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    return "SESSION_" + std::to_string(now) + "_" + std::to_string(counter++);
+}
+
+ClientInfo* GameServer::findDisconnectedClient(const std::string& sessionId) {
+    std::lock_guard<std::mutex> lock(clientsMutex);
+
+    for (auto* client : clients) {
+        if (client && client->isDisconnected && client->sessionId == sessionId) {
+            auto elapsed = std::chrono::steady_clock::now() - client->lastSeen;
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+            if (seconds < RECONNECT_TIMEOUT_SECONDS) {
+                return client;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+bool GameServer::reconnectClient(ClientInfo* oldClient, int newSocket) {
+    if (!oldClient) return false;
+
+    std::cout << "🔄 Reconnecting hráče #" << oldClient->playerNumber << std::endl;
+
+    // Zavřeme starý socket (pokud existuje)
+    if (oldClient->socket >= 0) {
+        close(oldClient->socket);
+    }
+
+    // Nastavíme nový socket
+    oldClient->socket = newSocket;
+    oldClient->connected = true;
+    oldClient->isDisconnected = false;
+    oldClient->lastSeen = std::chrono::steady_clock::now();
+
+    // Notifikujeme ostatní hráče
+    nlohmann::json statusData;
+    statusData["message"] = "Hráč se znovu připojil";
+    statusData["playerNumber"] = oldClient->playerNumber;
+    statusData["nickname"] = oldClient->nickname;
+    broadcastMessage(messageType::STATUS, statusData.dump());
+
+    return true;
+}
+
+void GameServer::handleClientDisconnection(ClientInfo* client) {
+    if (!client) return;
+
+    std::cout << "\n🔌 Hráč #" << client->playerNumber << " se odpojil - čekám na reconnect" << std::endl;
+
+    // Označíme jako dočasně odpojeného (NE odstranění ze seznamu)
+    client->connected = false;
+    client->isDisconnected = true;
+    client->lastSeen = std::chrono::steady_clock::now();
+
+    // Zavřeme socket
+    if (client->socket >= 0) {
+        shutdown(client->socket, SHUT_RDWR);
+        close(client->socket);
+        client->socket = -1;
+    }
+
+    // Notifikujeme ostatní hráče
+    nlohmann::json statusData;
+    statusData["message"] = "Hráč ztratil spojení - čekáme na reconnect";
+    statusData["playerNumber"] = client->playerNumber;
+    statusData["reconnectTimeout"] = RECONNECT_TIMEOUT_SECONDS;
+    broadcastMessage(messageType::STATUS, statusData.dump());
+
+    std::cout << "⏳ Čekám " << RECONNECT_TIMEOUT_SECONDS << "s na reconnect hráče #"
+              << client->playerNumber << std::endl;
+}
+
+void GameServer::checkDisconnectedClients() {
+    while (running) {
+        std::this_thread::sleep_for(std::chrono::seconds(10)); // Kontrola každých 10s
+
+        std::lock_guard<std::mutex> lock(clientsMutex);
+
+        auto now = std::chrono::steady_clock::now();
+        std::vector<ClientInfo*> toRemove;
+
+        for (auto* client : clients) {
+            if (client && client->isDisconnected) {
+                auto elapsed = now - client->lastSeen;
+                auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+                if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
+                    std::cout << "⏱️ Timeout pro hráče #" << client->playerNumber
+                              << " - odstraňuji permanentně" << std::endl;
+                    toRemove.push_back(client);
+                }
+            }
+        }
+
+        // Permanentní odstranění hráčů s timeoutem
+        for (auto* client : toRemove) {
+            disconnectClient(client); // Nyní permanentní odstranění
+        }
+    }
 }

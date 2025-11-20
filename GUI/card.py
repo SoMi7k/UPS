@@ -3,6 +3,7 @@ import pygame
 import os
 
 class State(Enum):
+    CHYBOVÝ_STAV = 0
     LICITACE_TRUMF = 1
     LICITACE_TALON = 2
     LICITACE_HRA = 3
@@ -118,7 +119,7 @@ class Card:
 
     def __str__(self):
         """Vrátí string dané karty."""
-        return f"{self.rank.name} {self.suit.value}"
+        return f"{rankToString(self.rank)} {self.suit.value}"
 
     def __repr__(self):
         """Metoda pro formální reprezentaci objektu, užitečná pro debugování."""
@@ -166,3 +167,24 @@ def card_mappping(input_str: str) -> Card:
     
     # Vytvoření a vrácení nové instance Card
     return Card(RANK_MAP[rank_str], SUITE_MAP[suit_str])
+
+def rankToString(rank: CardRanks):
+    match (rank):
+        case CardRanks.A: 
+            return "a"
+        case CardRanks.X: 
+            return "10"
+        case CardRanks.K: 
+            return "k"
+        case CardRanks.Q: 
+            return "q"
+        case CardRanks.J: 
+            return "j"
+        case CardRanks.IX: 
+            return "9"
+        case CardRanks.VIII: 
+            return "8"
+        case CardRanks.VII: 
+            return "7"
+        case _: 
+            return "UNKNOWN"

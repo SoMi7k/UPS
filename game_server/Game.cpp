@@ -1,10 +1,11 @@
 #include <utility>
 #include <vector>
 #include <memory>
+#include <iostream>
 
 #include "Game.hpp"
 
-std::vector<int> ROZDAVANI_KARET = {7, 5, 5, 5};
+std::vector<int> ROZDAVANI_KARET = {12, 10};
 
 Game::Game(int numPlayers)
     : numPlayers(numPlayers),
@@ -18,10 +19,6 @@ Game::Game(int numPlayers)
       talon(0) {
 
     players.resize(numPlayers, nullptr);
-    playedCards.resize(numPlayers, nullptr);
-
-    // Inicializujeme pole zahraných karet (všechny nullptr)
-    playedCards.resize(numPlayers, nullptr);
 }
 
 // DESTRUKTOR - uvolníme dynamicky alokované hráče
@@ -62,6 +59,15 @@ Player* Game::getLicitator() const {
     return licitator;
 }
 
+void Game::resetTrick(int playerNumber) {
+    clearPlayedCards();
+    Player* player = getPlayer(playerNumber);
+    activePlayer = player;
+    waitingForTrickEnd = false;
+    trickWinnerSet = false;
+    trickSuitSet = false;
+}
+
 State Game::getState() const {
     return state;
 }
@@ -70,7 +76,7 @@ Player* Game::getActivePlayer() const {
     return activePlayer;
 }
 
-const std::vector<Card*>& Game::getPlayedCards() const {
+const std::map<int, Card>& Game::getPlayedCards() const {
     return playedCards;
 }
 
@@ -82,49 +88,35 @@ int Game::getTrickWinner() const {
     return trickWinner;
 }
 
-const std::vector<Card*>& Game::getTrickCards() const {
-    return trickCards;
-}
-
-std::string Game::getResultStr() const {
-    return resultStr;
+std::pair<int, int> Game::getResult() const {
+    return result;
 }
 
 GameLogic& Game::getGameLogic() {
     return gameLogic;
 }
 
+void Game::clearPlayedCards() {
+    if (!playedCards.empty()) {
+        playedCards.clear();
+    }
+}
+
 // DEAL_CARDS - rozdá karty podle pravidel
 // V Pythonu: def deal_cards(self):
 void Game::dealCards() {
-    // První kolo - 7 karet licitátorovi
+    // První kolo - 12 karet licitátorovi
     for (int i = 0; i < ROZDAVANI_KARET[0]; i++) {
-        Card* card = deck.dealCard();
-        if (card) licitator->addCard(*card);
+        Card *card = deck.dealCard();
+        licitator->addCard(*card);
     }
 
-    // Druhé kolo - 5 karet ostatním
+    // Druhé kolo - 10 karet ostatním
     for (int i = 0; i < ROZDAVANI_KARET[1]; i++) {
         for (Player* player : players) {
             if (player != licitator) {
-                Card* card = deck.dealCard();
-                if (card) player->addCard(*card);
-            }
-        }
-    }
-
-    // Třetí kolo - 5 karet licitátorovi
-    for (int i = 0; i < ROZDAVANI_KARET[2]; i++) {
-        Card* card = deck.dealCard();
-        if (card) licitator->addCard(*card);
-    }
-
-    // Čtvrté kolo - 5 karet ostatním
-    for (int i = 0; i < ROZDAVANI_KARET[3]; i++) {
-        for (Player* player : players) {
-            if (player != licitator) {
-                Card* card = deck.dealCard();
-                if (card) player->addCard(*card);
+                Card *card = deck.dealCard();
+                player->addCard(*card);
             }
         }
     }
@@ -133,6 +125,8 @@ void Game::dealCards() {
     for (Player* player : players) {
         player->sortHand();
     }
+
+    state = State::LICITACE_TRUMF;
 }
 
 // RESET_GAME - resetuje hru na začátek
@@ -142,6 +136,7 @@ void Game::resetGame() {
         player->removeHand();
     }
     deck.shuffle();
+    state = State::ROZDANI_KARET;
 }
 
 // NEXT_PLAYER - přepne na dalšího hráče
@@ -154,6 +149,7 @@ void Game::nextPlayer() {
 // GAME_STATE_1 - nastavení trumfové barvy
 // V Pythonu: def game_state_1(self, card: Card):
 void Game::gameState1(Card card) {
+    std::cout << "Trumf: " << card.toString() << std::endl;
     gameLogic.setTrumph(card.getSuit());  // Nastavíme trumf podle karty
     state = State::LICITACE_TALON;        // Přejdeme na další stav
 }
@@ -161,7 +157,8 @@ void Game::gameState1(Card card) {
 // GAME_STATE_2 - dávání karet do talonu
 // V Pythonu: def game_state_2(self, card: Card):
 void Game::gameState2(Card card) {
-    gameLogic.moveToTalon(card, *activePlayer);  // * = dereferujeme ukazatel
+    gameLogic.moveToTalon(card, *activePlayer);
+    std::cout << "Odhazuji kartu " << card.toString() << std::endl;
 
     if (gameLogic.getTalon().size() == 2) {
         if (higherGame && gameLogic.getMode() == Mode::BETL &&
@@ -203,6 +200,9 @@ void Game::gameState3(const std::string& label) {
 
     state = State::LICITACE_DOBRY_SPATNY;
     nextPlayer();
+
+    gameStarted = 1;
+    std::cout << "Zvolena hra. Začíná licitace.\n";
 }
 
 // GAME_STATE_4 - reakce na "Dobrý"/"Špatný"
@@ -232,6 +232,8 @@ void Game::gameState4(const std::string& label) {
     }
 
     nextPlayer();
+
+    std::cout << "Zahlášeno " << label << std::endl;
 }
 
 // GAME_STATE_5 - volba mezi BETL a DURCH
@@ -248,64 +250,47 @@ void Game::gameState5(const std::string& label) {
         higher(activePlayer, Mode::BETL);
         higherPlayer = activePlayer;
     }
-}
 
-// CHECK_STYCH - kontrola konce štychu
-// V Pythonu: def check_stych(self) -> bool:
-bool Game::checkStych() {
-    if (waitingForTrickEnd) {
-        // Přidáme karty výherci
-        for (Card* wonCard : trickCards) {
-            players[trickWinner]->addWonCard(*wonCard);
-        }
-
-        // Resetujeme pro další štych
-        std::fill(playedCards.begin(), playedCards.end(), nullptr);
-        trickSuitSet = false;
-        startingPlayerIndex = trickWinner;
-        trickWinnerSet = false;
-        trickCards.clear();
-        waitingForTrickEnd = false;
-        activePlayer = players[startingPlayerIndex];
-        return true;
-    }
-    return false;
+    std::cout << "Změna hry " << label << std::endl;
 }
 
 // GAME_STATE_6 - normální hra (HRA)
 // V Pythonu: def game_state_6(self, card: Card) -> bool:
 bool Game::gameState6(Card card) {
     if (trickSuitSet) {
-        if (!activePlayer->checkPlayedCard(trickSuit, gameLogic.getTrumph(),
-                                           card, playedCards, gameLogic.getMode())) {
+        std::cout << "Kontroluji zahranou kartu." << std::endl;
+        if (!activePlayer->checkPlayedCard(trickSuit, gameLogic.getTrumph(), card, playedCards, gameLogic.getMode())) {
             return false;
         }
     } else {
         trickSuit = card.getSuit();
         trickSuitSet = true;
+        std::cout << "Barvu štychu: " << suitToString(trickSuit) << std::endl;
     }
 
-    playedCards[activePlayer->getNumber()] = &card;
+    std::cout << "Přidávám kartu " << card.toString() << std::endl;
+    playedCards.insert_or_assign(activePlayer->getNumber(), card);
     activePlayer->getHand().removeCard(card);
 
     // Zkontrolujeme, zda je štych kompletní
-    bool allCardsPlayed = true;
-    for (Card* c : playedCards) {
-        if (c == nullptr) {
-            allCardsPlayed = false;
-            break;
-        }
+
+    bool allCardsPlayed = false;
+    if (static_cast<int>(playedCards.size()) == numPlayers) {
+        allCardsPlayed = true;
     }
 
     if (allCardsPlayed) {
+        std::cout << "Štych je kompletní, vyhodnocuji..." << std::endl;
         auto result = gameLogic.trickDecision(playedCards, startingPlayerIndex);
+        std::cout << "Vítěz je #" << result.first << " s vítěznou kartou " << result.second.toString() << std::endl;
         trickWinner = result.first;
         trickWinnerSet = true;
-        trickCards = playedCards;
         waitingForTrickEnd = true;
+        for (auto player_card : playedCards) {
+            players[trickWinner]->addWonCard(player_card.second);
+        }
     }
 
-    // Zkontrolujeme konec hry
     bool allHandsEmpty = true;
     for (Player* player : players) {
         if (player->hasCardInHand()) {
@@ -315,11 +300,15 @@ bool Game::gameState6(Card card) {
     }
 
     if (allHandsEmpty) {
-        resultStr = gameResult(nullptr);
+        std::cout << "Hráči již nemají karty, nastává konec hry" << std::endl;
+        result = gameResult(nullptr);
         state = State::END;
+        return true;
     }
 
-    nextPlayer();
+    if (!waitingForTrickEnd) {
+        nextPlayer();
+    }
     return true;
 }
 
@@ -336,44 +325,40 @@ bool Game::gameState7(Card card) {
         trickSuitSet = true;
     }
 
-    playedCards[activePlayer->getNumber()] = &card;
+    playedCards.insert_or_assign(activePlayer->getNumber(), card);
     activePlayer->getHand().removeCard(card);
 
-    bool allCardsPlayed = true;
-    for (Card* c : playedCards) {
-        if (c == nullptr) {
-            allCardsPlayed = false;
-            break;
-        }
+    bool allCardsPlayed = false;
+    if (static_cast<int>(playedCards.size()) == numPlayers) {
+        allCardsPlayed = true;
     }
 
     if (allCardsPlayed) {
-        auto result = gameLogic.trickDecision(playedCards, startingPlayerIndex);
-        int winnerIndex = result.first;
+        auto trick_result = gameLogic.trickDecision(playedCards, startingPlayerIndex);
+        int winnerIndex = trick_result.first;
         trickWinner = winnerIndex;
         trickWinnerSet = true;
-        trickCards = playedCards;
         waitingForTrickEnd = true;
 
         // Kontrola prohry v BETL/DURCH
         if (gameLogic.getMode() == Mode::BETL) {
             if (winnerIndex == licitator->getNumber()) {
                 bool loss = false;
-                resultStr = gameResult(&loss);
+                result = gameResult(&loss);
                 state = State::END;
                 return true;
             }
         } else {
             if (winnerIndex != licitator->getNumber()) {
                 bool loss = false;
-                resultStr = gameResult(&loss);
+                result = gameResult(&loss);
                 state = State::END;
                 return true;
             }
         }
 
-        for (Card* wonCard : playedCards) {
-            players[winnerIndex]->addWonCard(*wonCard);
+        for (auto wonCard : playedCards) {
+            players[winnerIndex]->addWonCard(wonCard.second);
         }
     }
 
@@ -387,18 +372,12 @@ bool Game::gameState7(Card card) {
 
     if (allHandsEmpty) {
         bool win = true;
-        resultStr = gameResult(&win);
+        result = gameResult(&win);
         state = State::END;
     }
 
     nextPlayer();
     return true;
-}
-
-// GAME_STATE_8 - konec hry
-// V Pythonu: def game_state_8(self, label: str) -> bool:
-bool Game::gameState8(const std::string& label) {
-    return label == "ANO";
 }
 
 // CHOOSE_MODE_STATE - výběr herního módu
@@ -437,13 +416,12 @@ void Game::higher(Player* player, Mode mode) {
 
 // GAME_RESULT - vyhodnocení výsledku hry
 // V Pythonu: def game_result(self, res: None|bool) -> str:
-std::string Game::gameResult(bool* result) {
+std::pair<int, int> Game::gameResult(bool* result) {
     if (result != nullptr) {
         if (*result) {
-            return "Vyhrál Hráč #" + std::to_string(licitator->getNumber()) + " jako licitátor!";
-        } else {
-            return "Prohrál Hráč #" + std::to_string(licitator->getNumber()) + " jako licitátor!";
+            return {1, 0};
         }
+        return {0, 1};
     }
 
     int playersPoints = 0;
@@ -455,37 +433,31 @@ std::string Game::gameResult(bool* result) {
         }
     }
 
-    if (licitatorPoints > playersPoints) {
-        return "Vyhrál Hráč #" + std::to_string(licitator->getNumber()) +
-               " jako licitátor v poměru " + std::to_string(licitatorPoints) +
-               " : " + std::to_string(playersPoints);
-    } else if (licitatorPoints == playersPoints) {
-        return "Remíza v poměru Hráč #" + std::to_string(licitator->getNumber()) +
-               " jako licitátor " + std::to_string(licitatorPoints) +
-               " : Hráči proti " + std::to_string(playersPoints);
+    if (licitator->getNumber() == trickWinner) {
+        licitatorPoints += 10;
     } else {
-        return "Prohrál Hráč #" + std::to_string(licitator->getNumber()) +
-               " jako licitátor v poměru " + std::to_string(licitatorPoints) +
-               " : " + std::to_string(playersPoints);
+        playersPoints += 10;
     }
+
+    return {licitatorPoints, playersPoints};
 }
 
-void Game::gameHandler(Card &card, std::string &label) {
-    while (true) {
-        State oldState = state;
-        switch (static_cast<int>(state)) {
-            case 1: gameState1(card);
-            case 2: gameState2(card);
-            case 3: gameState3(label);
-            case 4: gameState4(label);
-            case 5: gameState5(label);
-            case 6: gameState6(card);
-            case 7: gameState7(card);
-            case 8: gameState8(label);
-            default: std::cout << "ERROR: Unknown state" << std::endl; break;
-        }
-        if (oldState != state) {
-            stateChanged = true;
-        }
+bool Game::gameHandler(Card &card, std::string &label) {
+    State oldState = state;
+    bool result = true;
+    switch (static_cast<int>(state)) {
+        case 1: gameState1(card); break;
+        case 2: gameState2(card); break;
+        case 3: gameState3(label); break;
+        case 4: gameState4(label); break;
+        case 5: gameState5(label); break;
+        case 6: result = gameState6(card); break;
+        case 7: result = gameState7(card); break;
+        default: std::cout << "ERROR: Unknown state" << std::endl; break;
     }
+    if (oldState != state) {
+        stateChanged = 1;
+    }
+
+    return result;
 }

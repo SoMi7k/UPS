@@ -16,8 +16,14 @@
 - Eventuelně case: Betl -> špatný -> Betl
 - Přidat info který hráč je licitátor
 
-
 ### Todo list
-
 Server
-	Připsat serializaci game_start data
+	Vyřešit konec --> Zobrazení u všech hráčů + Návrat do lobby
+	Timeout špatných zpráv - zatím chyba => disconnect
+	Přidat lobby, Nastavení počtu hráčů
+	Restart hry - Při odpojení klienta (TRY!)
+	Status
+	Kouskované zprávy
+	Výpadky
+	Připojení z jiného zařízení
+	Vylepšení GUI - namísto hraje hráč -> Dodělat status hráčů, Vyřešit kolizi jmen, konkrétní jména při výpisu

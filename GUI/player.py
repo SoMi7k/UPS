@@ -86,7 +86,7 @@ class Player:
             try: # Pokusí se namapovat vstup na objekt karty 
                 played_card = card_mappping(played_card_input) 
                 # Zkontroluje, zda je karta v ruce 
-                if self.hand.find_card_in_hand(played_card): 
+                if self.hand and self.hand.find_card_in_hand(played_card): 
                     print(f"Zahrál si {played_card}") 
                     break 
                 # Pokud je vše v pořádku, ukončí se smyčka 
@@ -99,13 +99,17 @@ class Player:
     def pick_cards(self, count: int):
         """Returns a specific amount of cards."""
         cards = []
-        if count == "all":
-            count = len(self.hand.cards)
-        for i in range(count):
-            if i > len(self.hand.cards):
-                break
-            cards.append(self.hand.cards[i])
-        return cards
+        if self.hand:
+            if count == "all":
+                count = len(self.hand.cards)
+            for i in range(count):
+                if i > len(self.hand.cards):
+                    break
+                cards.append(self.hand.cards[i])
+            return cards
+        else:
+            print("⚠ Hand is not inicialized!")
+            return cards
     
     def sort_hand(self, mode=Mode.BETL):
         """Seřadí karty v ruce podle barvy a hodnoty."""

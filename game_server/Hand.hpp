@@ -25,9 +25,10 @@ public:
     void addWonCard(const Card& card);
     void calculateHand(const Mode& mode);
     void removeHand();
-    const std::vector<Card>& getCards() const { return cards; }
+    std::vector<Card> getCards() const { return cards; }
     const std::vector<Card>& getWonCards() const { return won_cards; }
     int getPoints() const { return points; }
+    void showCards();
 };
 
 #endif

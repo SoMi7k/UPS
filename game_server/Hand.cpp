@@ -3,6 +3,10 @@
 #include <map>
 
 #include "Hand.hpp"
+
+#include <iostream>
+#include <ostream>
+
 #include "Deck.hpp"
 #include "Card.hpp"
 
@@ -60,6 +64,7 @@ void Hand::removeCard(const Card& cardToRemove) {
 }
 
 void Hand::addCard(const Card& cardToAdd) {
+    //std::cout << "Card added " << cardToAdd.toString() << std::endl;
     cards.push_back(cardToAdd);
 }
 
@@ -78,3 +83,10 @@ void Hand::calculateHand(const Mode& mode) {
 void Hand::removeHand() {
     cards.clear();
 }
+
+void Hand::showCards() {
+    for (const auto& card : cards) {
+        std::cout << "  - " << card.toString() << std::endl;
+    }
+}
+

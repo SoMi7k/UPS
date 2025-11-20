@@ -8,10 +8,10 @@
 // Třída GameLogic — logika celé hry
 class GameLogic {
 private:
-    CardSuits trumph;           // Trumfová barva
+    CardSuits trumph = CardSuits::SRDCE;           // Trumfová barva
     std::vector<Card> talon;    // Talon (karty stranou)
     int numPlayers;             // Počet hráčů
-    Mode mode;                  // Herní mód (HRA, BETL, DURCH)
+    Mode mode = Mode::HRA;                  // Herní mód (HRA, BETL, DURCH)
     bool modeSet;               // Zda byl mód nastaven
 
 public:
@@ -33,10 +33,10 @@ public:
     void moveFromTalon(Player& player);
     
     // Metody pro vyhodnocování štychů
-    std::vector<bool> findTrumph(const std::vector<Card*>& cards, std::vector<bool> decisionList);
-    int sameSuitCase(const std::vector<Card*>& cards);
-    int notTrumphCase(const std::vector<Card*>& cards, CardSuits trickSuit);
-    std::pair<int, Card*> trickDecision(const std::vector<Card*>& cards, int startPlayerIndex);
+    std::vector<bool> findTrumph(const std::map<int, Card>& cards, std::vector<bool> decisionList);
+    int sameSuitCase(const std::map<int, Card>& cards);
+    int notTrumphCase(const std::map<int, Card>& cards, CardSuits trickSuit);
+    std::pair<int, Card> trickDecision(const std::map<int, Card>& cards, int startPlayerIndex);
 };
 
 #endif

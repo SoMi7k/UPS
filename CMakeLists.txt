@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(UPS)
 
 # Nastavte standard C++ pro celý projekt
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True) # Zajišťuje, že kompilace selže, pokud C++14 není k dispozici
 
 # 1. Definujte všechny zdrojové soubory
