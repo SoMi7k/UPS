@@ -32,15 +32,14 @@ class MessageType(Enum):
     HEARTBEAT = "HEARTBEAT"
     OK = "OK"
     
-    
-class Client:
+class ClientManager:
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(1.0)  # 1s timeout pro non-blocking
         
         # Gneneral variables
         self.connected = False
-        self.on_message = None  # callback pro GUI
+        self.on_message = None
         self.on_disconnect = None
         
         # Thread pro listening
@@ -48,7 +47,9 @@ class Client:
         self.running = False
         
         # Client info
-        self.session_id = None
+        self.session_id = None  # Náhodně vygenerovaný kód pro RECONNECT
+        self.number = None      # Číslo hráče (0-2) z WELCOME
+        self.nickname = None    # Jméno hráče (Player) z WELCOME
         
         # Message queue
         self.msg_queue = Queue()
@@ -61,8 +62,10 @@ class Client:
             if hasattr(self, 'sock') and self.sock:
                 try:
                     self.sock.close()
-                except:
-                    pass
+                except Exception as e:
+                    print(f"❌ Chyba zavření starého socketu: {e}")
+                    self.connected = False
+                    return False
             
             # Vytvoř nový socket
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -215,3 +218,6 @@ class Client:
         except Exception as e:
             print(f"⚠️ Timeout při čekání na frontu: {e}")
             return False
+        
+    def send_empty_trick(self):
+        self.send_message(MessageType.TRICK, {})

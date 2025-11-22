@@ -126,17 +126,23 @@ void Game::dealCards() {
         player->sortHand();
     }
 
+    deck.shuffle();
     state = State::LICITACE_TRUMF;
 }
 
 // RESET_GAME - resetuje hru na začátek
 // V Pythonu: def reset_game(self):
 void Game::resetGame() {
+    std::cout << "Resetuji hru..." << std::endl;
     for (Player* player : players) {
-        player->removeHand();
+        if (player) {
+            player->getHand().removeHand();
+        }
     }
     deck.shuffle();
     state = State::ROZDANI_KARET;
+
+    std::cout << "Hra resetována kvůli odpojení hráče!" << std::endl;
 }
 
 // NEXT_PLAYER - přepne na dalšího hráče
@@ -460,4 +466,8 @@ bool Game::gameHandler(Card &card, std::string &label) {
     }
 
     return result;
+}
+
+void Game::removePlayer(int playerNumber) {
+    players[playerNumber] = nullptr;
 }

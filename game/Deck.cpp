@@ -10,7 +10,6 @@
 #include <ostream>
 
 Deck::Deck() : cardIndex(0) {
-    cards = initializeDeck();
     shuffle();
 }
 
@@ -30,6 +29,7 @@ std::vector<Card*> Deck::initializeDeck() {
 }
 
 void Deck::shuffle() {
+    cards = initializeDeck();
     // Použití moderního C++ random generátoru
     std::random_device rd;
     std::mt19937 gen(rd());

@@ -50,6 +50,7 @@ public:
     std::pair<int, int> getResult() const;
     GameLogic& getGameLogic();
     void resetTrick(int playerNumber);
+    void removePlayer(int playerNumber);
 
     // Hlavní herní metody
     void dealCards();

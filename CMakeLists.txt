@@ -9,10 +9,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED True) # Zajišťuje, že kompilace selže, pokud
 # Použijte file(GLOB ...) pro nalezení všech .cpp souborů.
 # I když je file(GLOB) pro velké projekty nedoporučovaný, pro malý projekt je to nejjednodušší.
 file(GLOB SERVER_SOURCES "server/*.cpp")
-file(GLOB GAMESERVER_SOURCES "game_server/*.cpp")
+file(GLOB GAME_SOURCES "game/*.cpp")
 
 # Spojte všechny .cpp soubory do jednoho seznamu
-set(PROJECT_SOURCES ${SERVER_SOURCES} ${GAMESERVER_SOURCES})
+set(PROJECT_SOURCES ${SERVER_SOURCES} ${GAME_SOURCES}
+        server/GameManager.cpp)
 
 # 2. Vytvořte jedinou spustitelnou aplikaci s názvem UPS
 add_executable(UPS ${PROJECT_SOURCES})

@@ -1,10 +1,23 @@
-from card import Card, State, Mode, CardSuits, card_mappping
-from player import Player
+from .card import Card, Mode, CardSuits
+from .player import Player
+from enum import Enum
+
+class State(Enum):
+    CHYBOVÝ_STAV = 0
+    LICITACE_TRUMF = 1
+    LICITACE_TALON = 2
+    LICITACE_HRA = 3
+    LICITACE_DOBRY_SPATNY = 4
+    LICITACE_BETL_DURCH = 5
+    HRA = 6
+    BETL = 7
+    DURCH = 7
+    END = 8
 
 # Hlavní třída Game
 class Game:
     """
-    Třída, ve které se nachází všechny prvky potřebné pro hru Blackjack.
+    Třída, ve které se nachází všechny prvky potřebné pro hru Mariáš.
     Obsahuje metody pro funkci hry.
     """
     def __init__(self, numPlayers: int, clientNumber: int):

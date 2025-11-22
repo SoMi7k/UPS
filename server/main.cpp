@@ -1,4 +1,4 @@
-#include "test_server.hpp"
+#include "Server.hpp"
 #include <iostream>
 #include <csignal>
 
@@ -34,9 +34,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  Mariáš Server" << std::endl;
     std::cout << "==================================" << std::endl;
     std::cout << "Port: " << port << std::endl;
-    std::cout << "Počet hráčů: 3" << std::endl;
+    std::cout << "Počet hráčů: 2" << std::endl;
     std::cout << "==================================" << std::endl;
     std::cout << std::endl;
+
+
     
     // Vytvoříme server
     GameServer server(port);
@@ -56,21 +58,3 @@ int main(int argc, char* argv[]) {
     
     return 0;
 }
-
-/*
-KOMPILACE:
-g++ -std=c++17 -pthread \
-    game_server/Card.cpp \
-    game_server/Hand.cpp \
-    game_server/Player.cpp \
-    game_server/Deck.cpp \
-    game_server/GameLogic.cpp \
-    game_server/Game.cpp \
-    server/test_server.cpp \
-    server/main.cpp \
-    -o game_server
-
-SPUŠTĚNÍ:
-./game_server          # Výchozí port 10000
-./game_server 8080     # Vlastní port
-*/

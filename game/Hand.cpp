@@ -81,7 +81,12 @@ void Hand::calculateHand(const Mode& mode) {
 }
 
 void Hand::removeHand() {
-    cards.clear();
+    if (!cards.empty()) {
+        cards.clear();
+    }
+    if (!won_cards.empty()) {
+        won_cards.clear();
+    }
 }
 
 void Hand::showCards() {

@@ -1,10 +1,10 @@
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra
-TARGET = game_server.exe
+TARGET = marias.exe
 
 # Directories
-GAME_DIR = game_server
+GAME_DIR = game
 SERVER_DIR = server
 BUILD_DIR = build
 
@@ -15,7 +15,11 @@ SRCS = $(GAME_DIR)/Card.cpp \
        $(GAME_DIR)/Deck.cpp \
        $(GAME_DIR)/GameLogic.cpp \
        $(GAME_DIR)/Game.cpp \
-       $(SERVER_DIR)/test_server.cpp \
+       $(SERVER_DIR)/NetworkManager.cpp \
+       $(SERVER_DIR)/ClientManager.cpp \
+       $(SERVER_DIR)/GameManager.cpp \
+       $(SERVER_DIR)/MessageHandler.cpp \
+       $(SERVER_DIR)/Server.cpp \
        $(SERVER_DIR)/main.cpp
 
 # Object files in build directory
@@ -25,7 +29,11 @@ OBJS = $(BUILD_DIR)/Card.o \
        $(BUILD_DIR)/Deck.o \
        $(BUILD_DIR)/GameLogic.o \
        $(BUILD_DIR)/Game.o \
-       $(BUILD_DIR)/test_server.o \
+       $(BUILD_DIR)/NetworkManager.o \
+       $(BUILD_DIR)/ClientManager.o \
+       $(BUILD_DIR)/GameManager.o \
+       $(BUILD_DIR)/MessageHandler.o \
+       $(BUILD_DIR)/Server.o \
        $(BUILD_DIR)/main.o
 
 # Default target

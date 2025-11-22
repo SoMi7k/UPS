@@ -2,18 +2,6 @@ from enum import Enum
 import pygame
 import os
 
-class State(Enum):
-    CHYBOVÝ_STAV = 0
-    LICITACE_TRUMF = 1
-    LICITACE_TALON = 2
-    LICITACE_HRA = 3
-    LICITACE_DOBRY_SPATNY = 4
-    LICITACE_BETL_DURCH = 5
-    HRA = 6
-    BETL = 7
-    DURCH = 7
-    END = 8
-
 class Mode(Enum):
     HRA = 1
     BETL = 4
@@ -129,7 +117,7 @@ class Card:
         """Vrátí pygame Surface s obrázkem karty."""
         path = CARD_IMAGES[(self.rank, self.suit)]
         
-        IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
+        IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
         image = pygame.image.load(IMG_DIR).convert_alpha()
         CARD_WIDTH, CARD_HEIGHT = 70, 100
         return pygame.transform.scale(image, (CARD_WIDTH, CARD_HEIGHT))
