@@ -44,7 +44,7 @@ int Player::calculateHand(const Mode& mode) {
     return hand.getPoints();
 }
 
-bool Player::checkPlayedCard(CardSuits trickSuit, CardSuits trumph, const Card& playedCard,
+bool Player::checkPlayedCard(CardSuits trickSuit, std::optional<CardSuits> trumph, const Card& playedCard,
                              const std::map<int, Card>& playedCards, const Mode& mode) {
     std::vector<Card> validCards;
     for (const auto& c : playedCards) {
@@ -77,33 +77,43 @@ bool Player::checkPlayedCard(CardSuits trickSuit, CardSuits trumph, const Card& 
         return true;
     }
 
+
     // 2. nemá barvu, ale má trumf
-    if (hand.findCardBySuit(trumph)) {
-        if (playedCard.getSuit() != trumph) {
-            invalid_move = "Musíš zahrát trumf!\n";
-            return false;
-        }
+    if (trumph.has_value()) {
+        CardSuits suit = trumph.value();
+        if (hand.findCardBySuit(suit)) {
+            if (playedCard.getSuit() != trumph) {
+                invalid_move = "Musíš zahrát trumf!\n";
+                return false;
+            }
 
-        /*
-        auto highestTrump = std::max_element(validCards.begin(), validCards.end(),
-            [&](const Card& a, const Card& b) {
-                return a.getSuit() == trumph &&
-                       a.getValue(mode) < b.getValue(mode);
-            });
-
-        if (highestTrump != validCards.end() &&
-            playedCard.getValue(mode) < highestTrump->getValue(mode)) {
-            for (const auto& c : hand.getCards()) {
-                if (c.getSuit() == trumph &&
-                    c.getValue(mode) > highestTrump->getValue(mode)) {
-                    invalid_move = "Musíš zahrát vyšší trumf!\n";
-                    return false;
+            bool played_trumph = false;
+            for (auto card :playedCards) {
+                if (card.second.getSuit() == suit) {
+                    played_trumph = true;
                 }
             }
-        }
 
-        return true;
-        */
+            if (played_trumph) {
+                auto highestTrump = std::max_element(validCards.begin(), validCards.end(),
+                    [&](const Card& a, const Card& b) {
+                        return a.getSuit() == trumph &&
+                               a.getValue(mode) < b.getValue(mode);
+                    });
+
+                if (highestTrump != validCards.end() &&
+                    playedCard.getValue(mode) < highestTrump->getValue(mode)) {
+                    for (const auto& c : hand.getCards()) {
+                        if (c.getSuit() == trumph &&
+                            c.getValue(mode) > highestTrump->getValue(mode)) {
+                            invalid_move = "Musíš zahrát vyšší trumf!\n";
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
     }
 
     return true;

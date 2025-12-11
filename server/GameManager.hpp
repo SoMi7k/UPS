@@ -16,9 +16,7 @@ public:
     ~GameManager();
 
     void startGame();
-    void resetGame();
-    void initPlayer(ClientInfo* client, const std::string& nickname);
-    void disconnectClient(ClientInfo* client);
+    void initPlayers();
 
     // ============================================================
     // PRIVÁTNÍ METODY - Serializace
@@ -55,4 +53,4 @@ private:
     int trickResponses = 0;
 };
 
-#endif // CLIENT_MANAGER_HPP
+#endif

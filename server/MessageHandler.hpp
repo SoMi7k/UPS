@@ -22,13 +22,13 @@ private:
 
     // Jednotlivé handlery pro různé typy zpráv
     void handleHeartbeat(ClientInfo* client);
-    void handleReady(ClientInfo* client, const nlohmann::json& data);
+    void handleReady(ClientInfo* client);
     void handleTrick(ClientInfo* client);
     void handleCard(ClientInfo* client, const nlohmann::json& data);
     void handleBidding(const nlohmann::json& data);
     void handleReset(ClientInfo* client, const nlohmann::json& data);
     void handleDisconnect(ClientInfo* client);
-    void handleConnect(ClientInfo* client, const nlohmann::json& data);
+    void handleConnect(ClientInfo* client);
 
     // Pomocné funkce
     void sendError(ClientInfo* client, const std::string& msgType, const std::string& errorMessage);

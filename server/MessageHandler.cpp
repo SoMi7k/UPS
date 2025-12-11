@@ -32,7 +32,7 @@ void MessageHandler::processClientMessage(ClientInfo* client, const std::string&
     }
     // ===== READY =====
     else if (msgType == messageType::READY) {
-        handleReady(client, data);
+        handleReady(client);
     }
     // ===== TRICK =====
     else if (msgType == messageType::TRICK) {
@@ -56,7 +56,7 @@ void MessageHandler::processClientMessage(ClientInfo* client, const std::string&
     }
     // ===== CONNECT =====
     else if (msgType == messageType::CONNECT) {
-        handleConnect(client, data);
+        handleConnect(client);
     }
     // ===== UNKNOWN =====
     else {
@@ -74,7 +74,7 @@ void MessageHandler::handleHeartbeat(ClientInfo* client) {
     client->lastSeen = std::chrono::steady_clock::now();
 }
 
-void MessageHandler::handleReady(ClientInfo* client, const nlohmann::json& data) {
+void MessageHandler::handleReady(ClientInfo* client) {
     std::cout << "✅ Hráč #" << client->playerNumber << " je připraven" << std::endl;
 
     nlohmann::json okData;
@@ -111,26 +111,29 @@ void MessageHandler::handleBidding(const nlohmann::json& data) {
 
 void MessageHandler::handleReset(ClientInfo* client, const nlohmann::json& data) {
     std::cout << "🔄 Hráč #" << client->playerNumber << " žádá o reset" << std::endl;
-    std::string reset = data["reset"];
+    std::string reset = data["label"];
 
     if (reset == "ANO") {
-        nlohmann::json waitData;
-        waitData["current"] = clientManager->getConnectedCount();
-        clientManager->sendToPlayer(client->playerNumber, messageType::WAIT_LOBBY, waitData.dump());
-        std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+        if (clientManager->getConnectedCount() < 2) {
+            nlohmann::json waitData;
+            waitData["current"] = clientManager->getConnectedCount();
+            clientManager->sendToPlayer(client->playerNumber, messageType::WAIT_LOBBY, waitData.dump());
+            std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+        } else {
+            gameManager->startGame();
+        }
     } else {
-        gameManager->disconnectClient(client);
+        clientManager->disconnectClient(client);
     }
 }
 
 void MessageHandler::handleDisconnect(ClientInfo* client) {
     std::cout << "👋 Hráč #" << client->playerNumber << " se odpojuje" << std::endl;
-    gameManager->disconnectClient(client);
+    clientManager->disconnectClient(client);
 }
 
-void MessageHandler::handleConnect(ClientInfo* client, const nlohmann::json& data) {
+void MessageHandler::handleConnect(ClientInfo* client) {
     std::cout << "📨 Přijato CONNECT od hráče #" << client->playerNumber << std::endl;
-    // Už je zpracováno v handleClient(), zde jen logujeme
 }
 
 void MessageHandler::sendError(ClientInfo* client, const std::string& msgType, const std::string& errorMessage) {

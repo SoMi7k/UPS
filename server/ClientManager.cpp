@@ -8,6 +8,7 @@
 ClientManager::ClientManager(int requiredPlayers, NetworkManager* networkManager)
     : requiredPlayers(requiredPlayers), connectedPlayers(0), networkManager(networkManager) {
     std::cout << "🔧 ClientManager vytvořen (požadováno " << requiredPlayers << " hráčů)" << std::endl;
+    clientNumbers.resize(requiredPlayers, 0);
 }
 
 ClientManager::~ClientManager() {
@@ -27,16 +28,26 @@ ClientManager::~ClientManager() {
     clients.clear();
 }
 
+int ClientManager::getFreeNumber() {
+    for (int i = 0; i < requiredPlayers; i++) {
+        if (clientNumbers[i] == 0) {
+            clientNumbers[i] = 1;
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 ClientInfo* ClientManager::addClient(int socket, const std::string& address) {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
     auto* client = new ClientInfo{
         socket,
-        connectedPlayers,
+        getFreeNumber(),
         address,
         true,
         std::thread(),
-        generateSessionId(),
         std::chrono::steady_clock::now(),
         false,
         ""
@@ -91,6 +102,7 @@ void ClientManager::disconnectClient(ClientInfo* client) {
     std::cout << "  - Socket: " << client->socket << std::endl;
 
     client->connected = false;
+    clientNumbers[client->playerNumber] = 0;
 
     if (client->socket >= 0) {
         shutdown(client->socket, SHUT_RDWR);
@@ -109,9 +121,11 @@ void ClientManager::disconnectClient(ClientInfo* client) {
         }
     }
 
+    readyCount--;
+
     // Notifikace ostatních - teď je bezpečná
     nlohmann::json statusData;
-    statusData["message"] = "Hráč se odpojil";
+    statusData["code"] = 1;
     statusData["playerNumber"] = client->playerNumber;
     statusData["connectedPlayers"] = connectedPlayers;
     broadcastMessage(messageType::STATUS, statusData.dump());
@@ -142,11 +156,11 @@ ClientInfo* ClientManager::findClientByPlayerNumber(int playerNumber) {
     return nullptr;
 }
 
-ClientInfo* ClientManager::findDisconnectedClient(const std::string& sessionId) {
+ClientInfo* ClientManager::findDisconnectedClient(const std::string& nickname) {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
     for (auto* client : clients) {
-        if (client && client->isDisconnected && client->sessionId == sessionId) {
+        if (client && client->isDisconnected && client->nickname == nickname) {
             auto elapsed = std::chrono::steady_clock::now() - client->lastSeen;
             auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
 
@@ -173,7 +187,7 @@ bool ClientManager::reconnectClient(ClientInfo* oldClient, int newSocket) {
     oldClient->lastSeen = std::chrono::steady_clock::now();
 
     nlohmann::json statusData;
-    statusData["message"] = "Hráč se znovu připojil";
+    statusData["code"] = 3;
     statusData["playerNumber"] = oldClient->playerNumber;
     statusData["nickname"] = oldClient->nickname;
     broadcastMessage(messageType::STATUS, statusData.dump());
@@ -197,7 +211,7 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
     }
 
     nlohmann::json statusData;
-    statusData["message"] = "Hráč ztratil spojení - čekáme na reconnect";
+    statusData["code"] = 2;
     statusData["playerNumber"] = client->playerNumber;
     statusData["reconnectTimeout"] = RECONNECT_TIMEOUT_SECONDS;
     broadcastMessage(messageType::STATUS, statusData.dump());
@@ -206,7 +220,7 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
               << client->playerNumber << std::endl;
 }
 
-void ClientManager::checkDisconnectedClients(bool& running) {
+void ClientManager::checkDisconnectedClients(bool running) {
     while (running) {
         std::this_thread::sleep_for(std::chrono::seconds(10));
 
@@ -279,10 +293,4 @@ void ClientManager::sendToPlayer(int playerNumber, const std::string& msgType, c
     }
 
     std::cerr << "⚠ Hráč #" << playerNumber << " nebyl nalezen" << std::endl;
-}
-
-std::string ClientManager::generateSessionId() {
-    static int counter = 0;
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
-    return "SESSION_" + std::to_string(now) + "_" + std::to_string(counter++);
 }

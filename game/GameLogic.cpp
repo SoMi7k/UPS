@@ -12,11 +12,12 @@ GameLogic::GameLogic(int numPlayers)
 }
 
 // GETTERY - přístup k privátním členským proměnným
-CardSuits GameLogic::getTrumph() const {
+
+std::optional<CardSuits> GameLogic::getTrumph() const {
     return trumph;  // Vrací naši členskou proměnnou trumph
 }
 
-const std::vector<Card>& GameLogic::getTalon() const {
+std::vector<Card>& GameLogic::getTalon() {
     return talon;  // Vrací referenci na náš talon
 }
 
@@ -29,7 +30,7 @@ bool GameLogic::isModeSet() const {
 }
 
 // SETTERY - nastavení privátních členských proměnných
-void GameLogic::setTrumph(CardSuits newTrumph) {
+void GameLogic::setTrumph(std::optional<CardSuits> newTrumph) {
     trumph = newTrumph;  // Nastavíme naši členskou proměnnou
 }
 
@@ -63,7 +64,7 @@ std::vector<bool> GameLogic::findTrumph(const std::map<int, Card>& cards, std::v
     
     for (size_t i = 0; i < cards.size(); i++) {
         // Porovnáme barvu karty s naší trumfovou barvou
-        if (cards.at(i).getSuit() != trumph) {
+        if (cards.at(i).getSuit() != *trumph) {
             decisionList[i] = false;  // Není trumf
         }
     }

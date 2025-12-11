@@ -2,11 +2,11 @@
 #include "MessageHandler.hpp"
 #include "NetworkManager.hpp"
 #include <iostream>
+#include <random>
 
 GameManager::GameManager(int requiredPlayers, NetworkManager* networkManager, ClientManager* clientManager)
     : networkManager(networkManager), clientManager(clientManager), requiredPlayers(requiredPlayers) {
 
-    game = std::make_unique<Game>(requiredPlayers);
     std::cout << "🔧 GameManager vytvořen (požadováno " << requiredPlayers << " hráčů)" << std::endl;
 }
 
@@ -14,36 +14,22 @@ GameManager::~GameManager() {
     game = nullptr;
 }
 
-void GameManager::initPlayer(ClientInfo* client, const std::string& nickname) {
+void GameManager::initPlayers() {
     std::lock_guard<std::mutex> lock(gameMutex);
-    game->initPlayer(client->playerNumber, nickname);
-}
-
-void GameManager::resetGame() {
-    std::lock_guard<std::mutex> lock(gameMutex);
-    game.reset();
-}
-
-void GameManager::disconnectClient(ClientInfo* client) {
-    clientManager->disconnectClient(client);
-
-    {
-        std::lock_guard<std::mutex> lock(gameMutex);
-        game->removePlayer(client->playerNumber);
-        if (game) {
-            game->resetGame();
-        }
+    for (auto client : clientManager->getClients()) {
+        game->initPlayer(client->playerNumber, client->nickname);
     }
-
-    nlohmann::json waitData;
-    waitData["current"] = clientManager->getConnectedCount();
-    clientManager->broadcastMessage(messageType::WAIT_LOBBY, waitData.dump());
 }
 
 void GameManager::startGame() {
     std::cout << "\n" << std::string(50, '=') << std::endl;
     std::cout << "🎮 SPOUŠTÍM HERNÍ LOGIKU 🎮" << std::endl;
     std::cout << std::string(50, '=') << std::endl;
+
+    game = std::make_unique<Game>(requiredPlayers);
+
+    // ===== KROK 0: Inicializovat hráče =====
+    initPlayers();
 
     // ===== KROK 1: Posílám 1. GAME_START =====
     std::cout << "\n📢 Hra se načítá..." << std::endl;
@@ -63,7 +49,9 @@ void GameManager::startGame() {
     {
         std::cout << "\n🃏 Rozdávám karty hráčům..." << std::endl;
         std::lock_guard<std::mutex> lock(gameMutex);
-        game->defineLicitator(0);
+        //std::mt19937 generator(static_cast<unsigned int>(std::time(0)));
+        //std::uniform_int_distribution<int> distribution(0, requiredPlayers - 1);
+        game->defineLicitator(0);//distribution(generator));
         game->dealCards();
         std::cout << "✓ Karty rozdány" << std::endl;
     }
@@ -106,7 +94,11 @@ nlohmann::json GameManager::serializeGameState() {
 
     if (game->gameStarted) {
         state["mode"] = modeToString(game->getGameLogic().getMode());
-        state["trump"] = suitToString(game->getGameLogic().getTrumph());
+        if (game->getGameLogic().getMode() == Mode::HRA) {
+            state["trump"] = suitToString(game->getGameLogic().getTrumph().value());
+        } else {
+            state["trump"] = "";
+        }
         state["isPlayedCards"] = 0;
 
         if (!game->getPlayedCards().empty()) {
@@ -274,7 +266,12 @@ void GameManager::handleBidding(std::string& label) {
         sendGameStateToPlayer(player->getNumber());
     }
 
-    {
+    if (label == "BETL" || label == "DURCH") {
+        for (auto player : players) {
+            nlohmann::json data = serializeGameStart(player->getNumber());
+            clientManager->sendToPlayer(player->getNumber(), messageType::GAME_START, data.dump());
+        }
+    } else {
         std::lock_guard<std::mutex> lock(gameMutex);
         game->stateChanged = 0;
     }
@@ -322,7 +319,7 @@ void GameManager::handleCard(ClientInfo* client, Card card) {
         if (game->getState() == State::END) {
             nlohmann::json gameResult;
             gameResult["gameResult"] = game->getResult();
-            clientManager->sendToPlayer(client->playerNumber, messageType::RESULT, gameResult.dump());
+            clientManager->broadcastMessage(messageType::RESULT, gameResult.dump());
         }
 
         if (!game->isWaitingForTrickEnd()) {

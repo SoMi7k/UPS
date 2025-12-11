@@ -12,8 +12,10 @@ file(GLOB SERVER_SOURCES "server/*.cpp")
 file(GLOB GAME_SOURCES "game/*.cpp")
 
 # Spojte všechny .cpp soubory do jednoho seznamu
-set(PROJECT_SOURCES ${SERVER_SOURCES} ${GAME_SOURCES}
-        server/GameManager.cpp)
+set(PROJECT_SOURCES ${SERVER_SOURCES}   ${GAME_SOURCES}
+        server/GameManager.cpp
+        server/LobbyManager.cpp
+        server/LobbyManager.hpp)
 
 # 2. Vytvořte jedinou spustitelnou aplikaci s názvem UPS
 add_executable(UPS ${PROJECT_SOURCES})

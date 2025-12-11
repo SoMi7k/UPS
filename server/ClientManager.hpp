@@ -11,6 +11,7 @@
 namespace messageType {
     // Client -> Server
     const std::string CONNECT = "CONNECT";
+    const std::string RECONNECT = "RECONNECT";
     const std::string READY = "READY";
     const std::string CARD = "CARD";
     const std::string BIDDING = "BIDDING";
@@ -40,7 +41,6 @@ struct ClientInfo {
     std::string address;
     bool connected;
     std::thread clientThread;
-    std::string sessionId;
     std::chrono::steady_clock::time_point lastSeen;
     bool isDisconnected;
     std::string nickname;
@@ -62,10 +62,10 @@ public:
     void disconnectClient(ClientInfo* client);
 
     // Reconnect
-    ClientInfo* findDisconnectedClient(const std::string& sessionId);
+    ClientInfo* findDisconnectedClient(const std::string& nickname);
     bool reconnectClient(ClientInfo* oldClient, int newSocket);
     void handleClientDisconnection(ClientInfo* client);
-    void checkDisconnectedClients(bool& running);
+    void checkDisconnectedClients(bool running);
 
     // Gettery
     int getConnectedCount() const;
@@ -76,16 +76,22 @@ public:
     void broadcastMessage(const std::string& msgType, const std::string& message);
     void sendToPlayer(int playerNumber, const std::string& msgType, const std::string& message);
 
+    // Synchronizace jména
+    int getreadyCount() const { return readyCount; };
+    void setreadyCount() { readyCount++; };
+
 private:
+    static constexpr int RECONNECT_TIMEOUT_SECONDS = 30;
+
     std::vector<ClientInfo*> clients;
     std::mutex clientsMutex;
     int requiredPlayers;
     int connectedPlayers;
     NetworkManager* networkManager;
+    std::vector<int> clientNumbers;
+    int readyCount = 0;
 
-    std::string generateSessionId();
-
-    static constexpr int RECONNECT_TIMEOUT_SECONDS = 60;
+    int getFreeNumber();
 };
 
 #endif // CLIENT_MANAGER_HPP

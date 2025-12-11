@@ -1,51 +1,40 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
-#include "ClientManager.hpp"
 #include "NetworkManager.hpp"
+#include "ClientManager.hpp"
 #include "GameManager.hpp"
 #include "MessageHandler.hpp"
-#include <thread>
+#include "LobbyManager.hpp"
 #include <memory>
+#include <thread>
+#include <atomic>
 
-// Hlavní třída serveru
 class GameServer {
 private:
     std::unique_ptr<NetworkManager> networkManager;
-    std::unique_ptr<ClientManager> clientManager;
-    std::unique_ptr<GameManager> gameManager;
-    std::unique_ptr<MessageHandler> messageHandler;;
+    std::unique_ptr<LobbyManager> lobbyManager;
+    std::unique_ptr<MessageHandler> messageHandler;
 
-    // ============================================================
-    // SÍŤOVÉ NASTAVENÍ
-    // ============================================================
     int port;
-    bool running;                  // Zda server běží
-    std::thread acceptThread;      // Vlákno pro přijímání klientů
+    std::atomic<bool> running;
     int requiredPlayers;
+    int lobbyCount;
+    std::thread acceptThread;
 
-    // ============================================================
-    // PRIVÁTNÍ METODY - Síťové operace
-    // ============================================================
     void acceptClients();
-    void handleClient(ClientInfo* client);
-
-    // ============================================================
-    // PRIVÁTNÍ METODY - Pomocné funkce
-    // ============================================================
-    void disconnectClient(ClientInfo* client);
+    void handleClient(ClientInfo* client, Lobby* lobby);
     void cleanup();
 
 public:
-    // ============================================================
-    // VEŘEJNÉ METODY
-    // ============================================================
-    GameServer(int port = 10000, int requiredPlayers = 2);
+    GameServer(int port, int requiredPlayers = 2, int lobbies = 1);
     ~GameServer();
 
     void start();
     void stop();
     bool isRunning() const;
+
+    std::string getStatus() const;
 };
 
-#endif
+#endif // SERVER_HPP

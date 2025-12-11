@@ -57,6 +57,7 @@ public:
     
     // Gettery
     CardRanks getRank() const;
+
     CardSuits getSuit() const;
     
     // Operátory porovnání

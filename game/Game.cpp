@@ -5,7 +5,7 @@
 
 #include "Game.hpp"
 
-std::vector<int> ROZDAVANI_KARET = {12, 10};
+std::vector<int> ROZDAVANI_KARET = {7, 5};
 
 Game::Game(int numPlayers)
     : numPlayers(numPlayers),
@@ -126,34 +126,16 @@ void Game::dealCards() {
         player->sortHand();
     }
 
-    deck.shuffle();
     state = State::LICITACE_TRUMF;
 }
 
-// RESET_GAME - resetuje hru na začátek
-// V Pythonu: def reset_game(self):
-void Game::resetGame() {
-    std::cout << "Resetuji hru..." << std::endl;
-    for (Player* player : players) {
-        if (player) {
-            player->getHand().removeHand();
-        }
-    }
-    deck.shuffle();
-    state = State::ROZDANI_KARET;
-
-    std::cout << "Hra resetována kvůli odpojení hráče!" << std::endl;
-}
-
 // NEXT_PLAYER - přepne na dalšího hráče
-// V Pythonu: def next_player(self):
 void Game::nextPlayer() {
     int actualPlayerIndex = activePlayer->getNumber();
     activePlayer = players[(actualPlayerIndex + 1) % numPlayers];
 }
 
 // GAME_STATE_1 - nastavení trumfové barvy
-// V Pythonu: def game_state_1(self, card: Card):
 void Game::gameState1(Card card) {
     std::cout << "Trumf: " << card.toString() << std::endl;
     gameLogic.setTrumph(card.getSuit());  // Nastavíme trumf podle karty
@@ -161,7 +143,6 @@ void Game::gameState1(Card card) {
 }
 
 // GAME_STATE_2 - dávání karet do talonu
-// V Pythonu: def game_state_2(self, card: Card):
 void Game::gameState2(Card card) {
     gameLogic.moveToTalon(card, *activePlayer);
     std::cout << "Odhazuji kartu " << card.toString() << std::endl;
@@ -188,7 +169,6 @@ void Game::gameState2(Card card) {
 }
 
 // GAME_STATE_3 - volba herního módu
-// V Pythonu: def game_state_3(self, label: str):
 void Game::gameState3(const std::string& label) {
     if (gameLogic.isModeSet()) {
         return;
@@ -212,7 +192,6 @@ void Game::gameState3(const std::string& label) {
 }
 
 // GAME_STATE_4 - reakce na "Dobrý"/"Špatný"
-// V Pythonu: def game_state_4(self, label: str):
 void Game::gameState4(const std::string& label) {
     if (label == "Špatný" && !higherGame) {
         higherGame = true;
@@ -235,15 +214,13 @@ void Game::gameState4(const std::string& label) {
 
     if (label == "Dobrý" && activePlayer->getNumber() == numPlayers - 1) {
         chooseModeState();
+        activePlayer = players[licitator->getNumber()];
     }
-
-    nextPlayer();
 
     std::cout << "Zahlášeno " << label << std::endl;
 }
 
 // GAME_STATE_5 - volba mezi BETL a DURCH
-// V Pythonu: def game_state_5(self, label: str):
 void Game::gameState5(const std::string& label) {
     if (label == "DURCH") {
         higher(activePlayer, Mode::DURCH);
@@ -252,6 +229,7 @@ void Game::gameState5(const std::string& label) {
 
     if (label == "BETL" && higherPlayer->getNumber() != numPlayers - 1) {
         higher(activePlayer, Mode::BETL);
+        nextPlayer();
     } else {
         higher(activePlayer, Mode::BETL);
         higherPlayer = activePlayer;
@@ -260,8 +238,42 @@ void Game::gameState5(const std::string& label) {
     std::cout << "Změna hry " << label << std::endl;
 }
 
+// CHOOSE_MODE_STATE - výběr herního módu
+void Game::chooseModeState() {
+    switch (gameLogic.getMode()) {
+        case Mode::HRA:
+            state = State::HRA;
+            break;
+        case Mode::BETL:
+            state = State::BETL;
+            std::cout << "Trumph vynulován!" << std::endl;
+            gameLogic.setTrumph(std::nullopt);
+            break;
+        case Mode::DURCH:
+            state = State::DURCH;
+            std::cout << "Trumph vynulován!" << std::endl;
+            gameLogic.setTrumph(std::nullopt);
+            break;
+        default:
+            state = State::HRA;
+            gameLogic.setMode(Mode::HRA);
+            break;
+    }
+}
+
+// HIGHER - hlášení vyšší hry
+void Game::higher(Player* player, Mode mode) {
+    gameLogic.setMode(mode);
+    higherPlayer = player;
+
+    if (player != licitator) {
+        licitator = player;
+        gameLogic.moveFromTalon(*player);
+        state = State::LICITACE_TALON;
+    }
+}
+
 // GAME_STATE_6 - normální hra (HRA)
-// V Pythonu: def game_state_6(self, card: Card) -> bool:
 bool Game::gameState6(Card card) {
     if (trickSuitSet) {
         std::cout << "Kontroluji zahranou kartu." << std::endl;
@@ -279,7 +291,6 @@ bool Game::gameState6(Card card) {
     activePlayer->getHand().removeCard(card);
 
     // Zkontrolujeme, zda je štych kompletní
-
     bool allCardsPlayed = false;
     if (static_cast<int>(playedCards.size()) == numPlayers) {
         allCardsPlayed = true;
@@ -287,9 +298,9 @@ bool Game::gameState6(Card card) {
 
     if (allCardsPlayed) {
         std::cout << "Štych je kompletní, vyhodnocuji..." << std::endl;
-        auto result = gameLogic.trickDecision(playedCards, startingPlayerIndex);
-        std::cout << "Vítěz je #" << result.first << " s vítěznou kartou " << result.second.toString() << std::endl;
-        trickWinner = result.first;
+        auto [fst, snd] = gameLogic.trickDecision(playedCards, startingPlayerIndex);
+        std::cout << "Vítěz je #" << fst << " s vítěznou kartou " << snd.toString() << std::endl;
+        trickWinner = fst;
         trickWinnerSet = true;
         waitingForTrickEnd = true;
         for (auto player_card : playedCards) {
@@ -319,7 +330,6 @@ bool Game::gameState6(Card card) {
 }
 
 // GAME_STATE_7 - BETL nebo DURCH
-// V Pythonu: def game_state_7(self, card: Card):
 bool Game::gameState7(Card card) {
     if (trickSuitSet) {
         if (!activePlayer->checkPlayedCard(trickSuit, gameLogic.getTrumph(),
@@ -334,28 +344,30 @@ bool Game::gameState7(Card card) {
     playedCards.insert_or_assign(activePlayer->getNumber(), card);
     activePlayer->getHand().removeCard(card);
 
+    // Zkontrolujeme, zda je štych kompletní
     bool allCardsPlayed = false;
     if (static_cast<int>(playedCards.size()) == numPlayers) {
         allCardsPlayed = true;
     }
 
     if (allCardsPlayed) {
-        auto trick_result = gameLogic.trickDecision(playedCards, startingPlayerIndex);
-        int winnerIndex = trick_result.first;
-        trickWinner = winnerIndex;
+        std::cout << "Štych je kompletní, vyhodnocuji..." << std::endl;
+        auto [fst, snd] = gameLogic.trickDecision(playedCards, startingPlayerIndex);
+        std::cout << "Vítěz je #" << fst << " s vítěznou kartou " << snd.toString() << std::endl;
+        trickWinner = fst;
         trickWinnerSet = true;
         waitingForTrickEnd = true;
 
         // Kontrola prohry v BETL/DURCH
         if (gameLogic.getMode() == Mode::BETL) {
-            if (winnerIndex == licitator->getNumber()) {
+            if (trickWinner == licitator->getNumber()) {
                 bool loss = false;
                 result = gameResult(&loss);
                 state = State::END;
                 return true;
             }
         } else {
-            if (winnerIndex != licitator->getNumber()) {
+            if (trickWinner != licitator->getNumber()) {
                 bool loss = false;
                 result = gameResult(&loss);
                 state = State::END;
@@ -364,7 +376,7 @@ bool Game::gameState7(Card card) {
         }
 
         for (auto wonCard : playedCards) {
-            players[winnerIndex]->addWonCard(wonCard.second);
+            players[trickWinner]->addWonCard(wonCard.second);
         }
     }
 
@@ -385,43 +397,7 @@ bool Game::gameState7(Card card) {
     nextPlayer();
     return true;
 }
-
-// CHOOSE_MODE_STATE - výběr herního módu
-// V Pythonu: def choose_mode_state(self):
-void Game::chooseModeState() {
-    switch (gameLogic.getMode()) {
-        case Mode::HRA:
-            state = State::HRA;
-            break;
-        case Mode::BETL:
-            state = State::BETL;
-            break;
-        case Mode::DURCH:
-            state = State::DURCH;
-            break;
-        default:
-            state = State::HRA;
-            gameLogic.setMode(Mode::HRA);
-            break;
-    }
-}
-
-// HIGHER - hlášení vyšší hry
-// V Pythonu: def higher(self, player: Player, mode: Mode):
-void Game::higher(Player* player, Mode mode) {
-    gameLogic.setMode(mode);
-    // V C++ nemůžeme nastavit nullptr na CardSuits enum
-    higherPlayer = player;
-
-    if (player != licitator) {
-        licitator = player;
-        gameLogic.moveFromTalon(*player);
-        state = State::LICITACE_TALON;
-    }
-}
-
 // GAME_RESULT - vyhodnocení výsledku hry
-// V Pythonu: def game_result(self, res: None|bool) -> str:
 std::pair<int, int> Game::gameResult(bool* result) {
     if (result != nullptr) {
         if (*result) {
@@ -466,8 +442,4 @@ bool Game::gameHandler(Card &card, std::string &label) {
     }
 
     return result;
-}
-
-void Game::removePlayer(int playerNumber) {
-    players[playerNumber] = nullptr;
 }

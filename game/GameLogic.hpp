@@ -3,12 +3,14 @@
 
 #include <vector>
 #include <utility>  // pro std::pair
+#include <optional>
+
 #include "Player.hpp"
 
 // Třída GameLogic — logika celé hry
 class GameLogic {
 private:
-    CardSuits trumph = CardSuits::SRDCE;           // Trumfová barva
+    std::optional<CardSuits> trumph;           // Trumfová barva
     std::vector<Card> talon;    // Talon (karty stranou)
     int numPlayers;             // Počet hráčů
     Mode mode = Mode::HRA;                  // Herní mód (HRA, BETL, DURCH)
@@ -19,13 +21,13 @@ public:
     GameLogic(int numPlayers);
     
     // Gettery
-    CardSuits getTrumph() const;
-    const std::vector<Card>& getTalon() const;
+    std::optional<CardSuits> getTrumph() const;
+    std::vector<Card>& getTalon();
     Mode getMode() const;
     bool isModeSet() const;
     
     // Settery
-    void setTrumph(CardSuits newTrumph);
+    void setTrumph(std::optional<CardSuits> newTrumph);
     void setMode(Mode newMode);
     
     // Metody pro práci s talonem

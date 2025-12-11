@@ -1,5 +1,5 @@
-from .card import Card, Mode, CardSuits
-from .player import Player
+from .Card import Card, Mode, CardSuits
+from .Player import Player
 from enum import Enum
 
 class State(Enum):
@@ -24,13 +24,13 @@ class Game:
         self.players: list = numPlayers * [None]
         self.state = State.LICITACE_TRUMF
         self.played_cards: list[Card] = []
-        self.active_player: bool
-        self.licitator: Player
+        self.active_player: bool = False
+        self.licitator: Player = None
         self.trumph: CardSuits|None = None
         self.mode: Mode|None = None
         self.result: str = ""
-        self.clientNumber = clientNumber
-        self.change_trick = False
+        self.clientNumber: int = clientNumber
+        self.change_trick: bool = False
     
     def add_player(self, player: Player):
         self.players[player.number] = player

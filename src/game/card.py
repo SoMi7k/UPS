@@ -116,9 +116,7 @@ class Card:
     def get_image(self) -> pygame.Surface:
         """Vrátí pygame Surface s obrázkem karty."""
         path = CARD_IMAGES[(self.rank, self.suit)]
-        
-        IMG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
-        image = pygame.image.load(IMG_DIR).convert_alpha()
+        image = pygame.image.load(path).convert_alpha()
         CARD_WIDTH, CARD_HEIGHT = 70, 100
         return pygame.transform.scale(image, (CARD_WIDTH, CARD_HEIGHT))
     

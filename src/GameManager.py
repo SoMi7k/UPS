@@ -1,23 +1,26 @@
 import pygame
 
-from src.game.game import Game, State
-from src.game.card import Card, Mode, card_mappping
-from src.game.player import Player, Hand
+from src.Game.Game import Game, State
+from src.Game.Card import Card, Mode, card_mappping
+from src.Game.Player import Player, Hand
 from src.ClientManager import ClientManager
-from src.gui.GuiManager import GuiManager, Color
+from src.View.GuiManager import GuiManager, Color
 
 class GameManager:
     def __init__(self, required_players: int, clientManager: ClientManager, guiManager: GuiManager):
         self.client = clientManager
         self.gui = guiManager
         
-        self.game = Game(required_players, self.client.number)
+        self.game = None
         
         self.required_players = required_players
         self.invalid = None
         self.waiting_for_trick = False
         self.offsets: dict = {}  # Pro animaci karet
         
+        
+    def set_game(self):
+        self.game = Game(self.required_players, self.client.number)
     
     # ============================================================
     # VYKRESLOVÁNÍ - POMOCNÉ FUNKCE

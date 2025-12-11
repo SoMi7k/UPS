@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <optional>
 
 #include "Hand.hpp"
 
@@ -26,7 +27,7 @@ public:
     std::vector<Card> pickCards(int count);
     int calculateHand(const Mode& mode);
     bool checkPlayedCard(CardSuits trickSuit,
-                         CardSuits trumph,
+                         std::optional<CardSuits>,
                          const Card& playedCard,
                          const std::map<int, Card>& playedCards,
                          const Mode& mode);

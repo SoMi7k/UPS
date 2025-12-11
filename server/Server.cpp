@@ -1,33 +1,22 @@
-#include "server.hpp"
-#include <cstring>
+#include "Server.hpp"
 #include <iostream>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
-#include <thread>
-#include <chrono>
-#include <string>
-#include <net/if.h>
-#include <vector>
-
-#define QUEUE_LENGTH 10
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 // ============================================================
 // KONSTRUKTOR A DESTRUKTOR
 // ============================================================
-
-GameServer::GameServer(int port, int requiredPlayers)
+GameServer::GameServer(int port, int requiredPlayers, int lobbies)
     : networkManager(std::make_unique<NetworkManager>(port)),
-      clientManager(std::make_unique<ClientManager>(requiredPlayers, networkManager.get())),
-      gameManager(std::make_unique<GameManager>(requiredPlayers, networkManager.get(), clientManager.get())),
-      messageHandler(std::make_unique<MessageHandler>(networkManager.get(), clientManager.get(),
-          gameManager.get())),
       port(port),
       running(false),
-      requiredPlayers(requiredPlayers) {
+      requiredPlayers(requiredPlayers),
+      lobbyCount(lobbies) {
 
     std::cout << "🔧 GameServer vytvořen na portu " << port << std::endl;
+    std::cout << "   - Počet hráčů: " << requiredPlayers << std::endl;
+    std::cout << "   - Počet místností: " << lobbies << std::endl;
 }
 
 GameServer::~GameServer() {
@@ -39,9 +28,8 @@ GameServer::~GameServer() {
 }
 
 // ============================================================
-// 2. ACCEPT CLIENTS - Přijímání nových klientů
+// ACCEPT CLIENTS - Přijímání nových klientů
 // ============================================================
-
 void GameServer::acceptClients() {
     std::cout << "\n=== Čekám na připojení klientů ===" << std::endl;
 
@@ -50,8 +38,8 @@ void GameServer::acceptClients() {
         socklen_t clientLen = sizeof(clientAddress);
 
         int clientSocket = accept(networkManager->getServerSocket(),
-                                  reinterpret_cast<sockaddr*>(&clientAddress),
-                                  &clientLen);
+                                 reinterpret_cast<sockaddr*>(&clientAddress),
+                                 &clientLen);
 
         if (clientSocket < 0) {
             if (running) {
@@ -68,76 +56,100 @@ void GameServer::acceptClients() {
         std::cout << "  - IP: " << clientIP << std::endl;
         std::cout << "  - Port: " << ntohs(clientAddress.sin_port) << std::endl;
 
-        // OPRAVENO: Použijeme getActiveCount() místo lockClientMutex()
-        int activeConnections = clientManager->getActiveCount();
+        // Najdeme volnou místnost
+        Lobby* lobby = lobbyManager->findAvailableLobby();
 
-        if (activeConnections >= requiredPlayers) {
-            std::cout << "⚠ Hra je plná, odmítám klienta" << std::endl;
-            networkManager->sendMessage(clientSocket, messageType::ERROR, "Game is full");
+        if (!lobby) {
+            std::cout << "⚠ Všechny místnosti jsou plné, odmítám klienta" << std::endl;
+            networkManager->sendMessage(clientSocket, messageType::ERROR, "All lobbies are full");
             close(clientSocket);
             continue;
         }
 
-        ClientInfo* client = clientManager->addClient(clientSocket, clientIP);
+        std::cout << "  -> Přiřazuji do Lobby #" << lobby->id << std::endl;
 
-        // Spuštění vlákna
-        client->clientThread = std::thread(&GameServer::handleClient, this, client);
+        // Přidáme klienta do místnosti
+        ClientInfo* client = lobby->clientManager->addClient(clientSocket, clientIP);
+
+        // Spuštění vlákna pro obsluhu klienta
+        client->clientThread = std::thread(&GameServer::handleClient, this, client, lobby);
         client->clientThread.detach();
 
-        std::cout << "✓ Vlákno pro hráče #" << client->playerNumber << " spuštěno" << std::endl;
+        std::cout << "✓ Vlákno pro hráče #" << client->playerNumber
+                  << " (Lobby #" << lobby->id << ") spuštěno" << std::endl;
 
-        // Pokud máme všechny hráče, spustíme hru
-        if (clientManager->getConnectedCount() == requiredPlayers) {
-            std::cout << "\n🎮 Všichni hráči připojeni - spouštím hru!" << std::endl;
-            gameManager->startGame();
+        // Zobrazíme status
+        std::cout << lobbyManager->getLobbiesStatus();
+
+        // Pokud má místnost všechny hráče, notifikujeme (ale nespouštíme hru!)
+        if (lobby->getConnectedCount() % requiredPlayers == 0 && !lobby->gameStarted) {
+            std::cout << "\n🎮 Lobby #" << lobby->id << " - Všichni hráči připojeni!" << std::endl;
+
+            // ===== SYNCHRONIZAČNÍ BARIÉRA =====
+            std::cout << "  -> Čeká se na připravenost hráčů..." << std::endl;
+            lobby->waitForAllPlayers();
+
+            // ===== SPUŠTĚNÍ HRY (pouze jednou) =====
+            if (!lobby->gameStarted) {
+                std::lock_guard<std::mutex> lock(lobby->readyMutex);
+                if (!lobby->gameStarted) {
+                    std::cout << "\n🚀 Lobby #" << lobby->id << " - SPOUŠTÍM HRU!" << std::endl;
+                    lobby->gameManager->startGame();
+                    //lobby->gameStarted = true;
+                }
+            }
         }
     }
 }
 
 // ============================================================
-// 3. HANDLE CLIENT - Obsluha jednoho klienta
+// HANDLE CLIENT - Obsluha jednoho klienta
 // ============================================================
-
-void GameServer::handleClient(ClientInfo* client) {
-    std::cout << "\n>>> Vlákno pro hráče #" << client->playerNumber << " zahájeno <<<" << std::endl;
+void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
+    std::cout << "\n>>> Vlákno pro hráče #" << client->playerNumber
+              << " (Lobby #" << lobby->id << ") zahájeno <<<" << std::endl;
 
     // ===== KROK 1: Poslání WELCOME zprávy =====
-    nlohmann::json welcomeData = {};
+    nlohmann::json welcomeData;
     welcomeData["playerNumber"] = client->playerNumber;
-    welcomeData["sessionId"] = client->sessionId;
-    welcomeData["lobby"] = 1;
+    welcomeData["lobby"] = lobby->id;
     welcomeData["requiredPlayers"] = requiredPlayers;
+
     networkManager->sendMessage(client->socket, messageType::WELCOME, welcomeData.dump());
 
     // ===== KROK 2: Čekání na NICKNAME nebo RECONNECT =====
     std::string initialMessage = networkManager->receiveMessage(client->socket);
+
     if (initialMessage.empty()) {
         std::cerr << "⚠ Hráč #" << client->playerNumber << " se odpojil před odesláním zprávy" << std::endl;
-        clientManager->handleClientDisconnection(client);
+        lobby->clientManager->handleClientDisconnection(client);
         return;
     }
 
     nlohmann::json msgJson = networkManager->deserialize(initialMessage);
     if (msgJson.empty()) {
-        clientManager->handleClientDisconnection(client);
+        lobby->clientManager->handleClientDisconnection(client);
         return;
     }
+
     std::string msgType = msgJson["type"];
 
     // Kontrola zda jde o RECONNECT
-    if (msgType == messageType::CONNECT && msgJson["data"].contains("sessionId")) {
-        std::string sessionId = msgJson["data"]["sessionId"];
-        std::cout << "🔄 Pokus o reconnect se session ID: " << sessionId << std::endl;
+    if (msgType == messageType::RECONNECT && msgJson["data"].contains("nickname")) {
+        std::string nickname = msgJson["data"]["nickname"];
+        std::cout << "🔄 Pokus o reconnect se session ID: " << nickname << std::endl;
 
-        ClientInfo* oldClient = clientManager->findDisconnectedClient(sessionId);
-        if (oldClient && clientManager->reconnectClient(oldClient, client->socket)) {
+        ClientInfo* oldClient = lobby->clientManager->findDisconnectedClient(nickname);
+
+        if (oldClient && lobby->clientManager->reconnectClient(oldClient, client->socket)) {
             std::cout << "✅ Hráč #" << oldClient->playerNumber << " úspěšně reconnectnut" << std::endl;
 
             // Pošleme aktuální stav hry
-            gameManager->sendGameStateToPlayer(oldClient->playerNumber);
+            lobby->gameManager->sendGameStateToPlayer(oldClient->playerNumber);
+
             nlohmann::json clientData;
-            clientData["client"] = gameManager->serializePlayer(oldClient->playerNumber);
-            clientManager->sendToPlayer(oldClient->playerNumber, messageType::CLIENT_DATA, clientData.dump());
+            clientData["client"] = lobby->gameManager->serializePlayer(oldClient->playerNumber);
+            lobby->clientManager->sendToPlayer(oldClient->playerNumber, messageType::CLIENT_DATA, clientData.dump());
 
             // Pokračujeme se starým clientem
             client = oldClient;
@@ -146,39 +158,53 @@ void GameServer::handleClient(ClientInfo* client) {
             nlohmann::json errorData;
             errorData["message"] = "Reconnect failed - session expired or invalid";
             networkManager->sendMessage(client->socket, messageType::ERROR, errorData.dump());
-            disconnectClient(client);
+            lobby->clientManager->disconnectClient(client);
             return;
         }
     } else {
         // Běžný nový hráč
         std::string nickname = msgJson["data"]["nickname"];
         client->nickname = nickname;
-        gameManager->initPlayer(client, nickname);
-
         std::cout << "  -> Nickname přijat od hráče #" << client->playerNumber << std::endl;
 
-        nlohmann::json waitData;
-        waitData["current"] = clientManager->getConnectedCount();
+        bool sameNickname = false;
+        for (auto c : lobby->clientManager->getClients()) {
+            if (c->nickname == nickname && c->playerNumber != client->playerNumber) {
+                sameNickname = true;
+            }
+        }
+        if (!sameNickname) {
+            nlohmann::json waitData;
+            waitData["current"] = lobby->getConnectedCount();
 
-        if (clientManager->getConnectedCount() < requiredPlayers) {
-            networkManager->sendMessage(client->socket, messageType::WAIT_LOBBY, waitData.dump());
-            std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+            if (lobby->getConnectedCount() < requiredPlayers) {
+                networkManager->sendMessage(client->socket, messageType::WAIT_LOBBY, waitData.dump());
+                std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
+            }
+        } else {
+            std::cerr << "❌ Chyba: Stejné jméno!" << std::endl;
+            nlohmann::json errorData;
+            errorData["message"] = "Chyba: Stejné jméno!";
+            networkManager->sendMessage(client->socket, messageType::DISCONNECT, errorData.dump());
+            lobby->clientManager->disconnectClient(client);
         }
     }
+
+    std::cout << "  -> Hráč #" << client->playerNumber << " oznámil připravenost" << std::endl;
+    lobby->playerReady();
 
     // ===== KROK 3: Hlavní smyčka =====
     std::cout << "  -> Vstupuji do příjmací smyčky pro hráče #" << client->playerNumber << std::endl;
 
+    // Vytvoříme MessageHandler pro tuto lobby
+    MessageHandler handler(networkManager.get(), lobby->clientManager.get(), lobby->gameManager.get());
+
     while (running && client->connected) {
         std::string message = networkManager->receiveMessage(client->socket);
-        if (message.empty()) {
-            disconnectClient(client);
-            return;
-        }
 
         if (message.empty()) {
             std::cout << "\n⚠ Hráč #" << client->playerNumber << " ztratil spojení" << std::endl;
-            clientManager->handleClientDisconnection(client);
+            lobby->clientManager->handleClientDisconnection(client);
             break;
         }
 
@@ -190,10 +216,11 @@ void GameServer::handleClient(ClientInfo* client) {
             message.pop_back();
         }
 
-        std::cout << "\n📨 Od hráče #" << client->playerNumber << ": \"" << message << "\"" << std::endl;
+        std::cout << "\n📨 Od hráče #" << client->playerNumber
+                  << " (Lobby #" << lobby->id << "): \"" << message << "\"" << std::endl;
 
         try {
-            messageHandler->processClientMessage(client, message);
+            handler.processClientMessage(client, message);
         } catch (const std::exception& e) {
             std::cerr << "❌ Výjimka při zpracování zprávy: " << e.what() << std::endl;
             nlohmann::json errorData;
@@ -202,13 +229,13 @@ void GameServer::handleClient(ClientInfo* client) {
         }
     }
 
-    std::cout << "\n<<< Vlákno pro hráče #" << client->playerNumber << " končí >>>" << std::endl;
+    std::cout << "\n<<< Vlákno pro hráče #" << client->playerNumber
+              << " (Lobby #" << lobby->id << ") končí >>>" << std::endl;
 }
 
 // ============================================================
-// HLAVNÍ METODY - START, STOP, IS RUNNING
+// HLAVNÍ METODY - START, STOP
 // ============================================================
-
 void GameServer::start() {
     std::cout << "\n" << std::string(60, '=') << std::endl;
     std::cout << "🚀 SPOUŠTÍM SERVER" << std::endl;
@@ -220,21 +247,34 @@ void GameServer::start() {
         return;
     }
 
+    // Vytvoření místností (musí být až po inicializaci socketu)
+    lobbyManager = std::make_unique<LobbyManager>(networkManager.get(), requiredPlayers, lobbyCount);
+
     running = true;
 
     // Spuštění accept threadu
     std::cout << "\n🔄 Spouštím accept thread..." << std::endl;
     acceptThread = std::thread(&GameServer::acceptClients, this);
 
-    // Spuštění timeout checkeru
+    // Spuštění timeout checkeru pro všechny místnosti
     std::thread timeoutThread([this]() {
-        clientManager->checkDisconnectedClients(running);
+        while (running) {
+            for (int i = 1; i <= lobbyCount; i++) {
+                Lobby* lobby = lobbyManager->getLobby(i);
+                if (lobby && lobby->clientManager) {
+                    lobby->clientManager->checkDisconnectedClients(running);
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
     });
     timeoutThread.detach();
 
     std::cout << "\n✅ Server úspěšně spuštěn!" << std::endl;
     std::cout << "📡 Naslouchám na portu " << port << std::endl;
-    std::cout << "⏳ Čekám na " << requiredPlayers << " hráče..." << std::endl;
+    std::cout << "🏠 Počet místností: " << lobbyCount << std::endl;
+    std::cout << "⏳ Každá místnost čeká na " << requiredPlayers << " hráče..." << std::endl;
+    std::cout << lobbyManager->getLobbiesStatus();
     std::cout << std::string(60, '=') << std::endl;
 
     // Čekáme na dokončení accept threadu (blocking)
@@ -255,8 +295,17 @@ void GameServer::stop() {
     // Zavření hlavního socketu (ukončí accept loop)
     networkManager->closeServerSocket();
 
-    // Odpojení všech klientů
-    clientManager->disconnectAll();
+    // Odpojení všech klientů ze všech místností
+    if (lobbyManager) {
+        lobbyManager->disconnectAll();
+
+        for (int i = 1; i <= lobbyCount; i++) {
+            if (lobbyManager->getLobby(i)) {
+                Lobby* lobby = lobbyManager->getLobby(i);
+                lobby->resetBarrier();
+            }
+        }
+    }
 
     // Počkáme na dokončení accept threadu
     if (acceptThread.joinable()) {
@@ -272,31 +321,21 @@ bool GameServer::isRunning() const {
     return running;
 }
 
-// ============================================================
-// DISCONNECT CLIENT - Odpojení jednoho klienta
-// ============================================================
-
-void GameServer::disconnectClient(ClientInfo* client) {
-    clientManager->disconnectClient(client);
+std::string GameServer::getStatus() const {
+    if (lobbyManager) {
+        return lobbyManager->getLobbiesStatus();
+    }
+    return "Server není inicializován";
 }
 
 // ============================================================
 // CLEANUP - Úklid zdrojů
 // ============================================================
-
 void GameServer::cleanup() {
     std::cout << "🧹 Provádím cleanup..." << std::endl;
 
-    if (messageHandler) {
-        messageHandler.reset();
-    }
-
-    if (gameManager) {
-        gameManager.reset();
-    }
-
-    if (clientManager) {
-        clientManager.reset();
+    if (lobbyManager) {
+        lobbyManager.reset();
     }
 
     if (networkManager) {
