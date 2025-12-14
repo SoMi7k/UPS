@@ -283,7 +283,7 @@ void GameManager::handleBidding(std::string& label) {
     }
 }
 
-void GameManager::handleCard(ClientInfo* client, Card card) {
+void GameManager::handleCard(Card card) {
     std::string null;
     bool result;
     int actualActivePlayerNumber;
@@ -317,6 +317,7 @@ void GameManager::handleCard(ClientInfo* client, Card card) {
         clientManager->sendToPlayer(actualActivePlayerNumber, messageType::CLIENT_DATA, clientData.dump());
 
         if (game->getState() == State::END) {
+            clientManager->nullreadyCount();
             nlohmann::json gameResult;
             gameResult["gameResult"] = game->getResult();
             clientManager->broadcastMessage(messageType::RESULT, gameResult.dump());

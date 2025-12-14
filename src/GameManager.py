@@ -12,6 +12,7 @@ class GameManager:
         self.gui = guiManager
         
         self.game = None
+        self.rec = True
         
         self.required_players = required_players
         self.invalid = None
@@ -172,7 +173,7 @@ class GameManager:
         return self.draw_cards(self.game.players[self.client.number].pick_cards(count))
     
     def show_invalid_move(self, msg: str):
-        self.gui.draw_text(msg, self.gui.font_large, Color.RED, y=self.gui.height-self.gui.card_height-20, center=True)
+        self.gui.draw_text(msg, self.gui.font_large, Color.RED, y=self.gui.height-170, center=True)
         
     def show_error_messages(self, msg: str):
         self.gui.draw_text(msg, self.gui.font_large, Color.RED, y=20, center=True)
@@ -199,7 +200,7 @@ class GameManager:
     def show_first_bidding(self):
         mode_name = self.game.mode.name
         trumph = self.game.trumph
-        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.gui.font_large, Color.GREEN, center=True)
+        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ''}", self.gui.font_large, Color.GREEN, center=True)
         if self.game.active_player:
            self.active_rects = self.draw_selection_buttons(["Dobrý", "Špatný"])
         else:
@@ -208,7 +209,7 @@ class GameManager:
     def show_higher_game_option(self):
         mode_name = self.game.mode.name
         trumph = self.game.trumph
-        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.gui.font_large, Color.GREEN, center=True)
+        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ''}", self.gui.font_large, Color.GREEN, center=True)
         if self.game.active_player:
             self.gui.draw_text("Vyber hru: ", self.gui.font_large, Color.GREEN, y=50, center=True)
             self.active_rects = self.draw_selection_buttons(["BETL", "DURCH"])
@@ -218,7 +219,7 @@ class GameManager:
     def show_second_bidding(self):
         mode_name = self.game.mode.name
         trumph = self.game.trumph
-        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ""}", self.gui.font_large, Color.GREEN, center=True)
+        self.gui.draw_text(f"{mode_name} {trumph.name if trumph else ''}", self.gui.font_large, Color.GREEN, center=True)
         if self.game.active_player:
             self.active_rects = self.draw_selection_buttons(["Špatný"])
         else:
@@ -229,13 +230,13 @@ class GameManager:
         self.gui.draw_text("Lobby 1 - Přehled hráčů:",  self.gui.font_medium, Color.BLACK, x=20, y=height)
         # Moje jméno
         if self.client.number is not None:
-            info_text = f"{self.client.nickname} (connected)"
+            info_text = f"{self.client.nickname}"
             self.gui.draw_text(info_text, self.gui.font_small, Color.BLUE, x=30, y=height+30)
             height += 50
             
             for i in range(self.required_players):
                 if i != self.client.number:
-                    self.gui.draw_text(self.game.players[i].nickname + "(connected)", self.gui.font_small, Color.BLACK, x=30, y=height)
+                    self.gui.draw_text(self.game.players[i].nickname, self.gui.font_small, Color.BLACK, x=30, y=height)
                     height += 20
                  
     def show_game(self):
@@ -287,6 +288,9 @@ class GameManager:
         elif self.game.state == State.LICITACE_TALON:
             self.show_removing_to_talon()
         elif self.game.state == State.LICITACE_HRA:
+            #if self.client.number == 1 and self.rec:
+            #    self.rec = False
+            #    self.client.sock.close()
             self.show_mode_option()  
         elif self.game.state == State.LICITACE_DOBRY_SPATNY:
             self.show_first_bidding()  

@@ -5,6 +5,7 @@ import time
 from enum import Enum
 from typing import Dict, Any
 from queue import Queue
+from .View.GuiManager import GuiManager
 
 class MessageType(Enum):
     # Server -> Client
@@ -18,7 +19,6 @@ class MessageType(Enum):
     CLIENT_DATA = "CLIENT_DATA"
     YOUR_TURN = "YOUR_TURN"
     WAIT_LOBBY = "WAIT_LOBBY"
-    WAIT = "WAIT"
     INVALID = "INVALID"
     
     # Client -> Server
@@ -26,17 +26,19 @@ class MessageType(Enum):
     RECONNECT = "RECONNECT"
     READY = "READY"
     CARD = "CARD"
-    TRICK = "TRICK"
     BIDDING = "BIDDING"
     RESET = "RESET"
-    
     HEARTBEAT = "HEARTBEAT"
-    OK = "OK"
+    TRICK = "TRICK"
+    
     
 class ClientManager:
-    def __init__(self):
+    def __init__(self, guiManager: GuiManager):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(1.0)  # 1s timeout pro non-blocking
+        
+        # GuiManager
+        self.guiManager = guiManager
         
         # General variables
         self.connected = False
@@ -44,6 +46,7 @@ class ClientManager:
         self.on_disconnect = None
         self.on_reconnecting = None  # 🆕 Callback pro UI
         self.on_reconnected = None   # 🆕 Callback při úspěšném reconnectu
+        self.wait_before_reconnect = 10
         
         # Thread pro listening
         self.listen_thread = None
@@ -63,13 +66,13 @@ class ClientManager:
         self.auto_reconnect = False
         self.reconnect_thread = None
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 60  # 60 pokusů = ~1 minuta (1s pauza mezi pokusy)
-        self.reconnect_delay = 1.0  # Sekund mezi pokusy
+        self.max_reconnect_attempts = 12  # 10 pokusů = 1 minuta ( 5s pauza mezi pokusy)
+        self.reconnect_delay = 5.0  # Sekund mezi pokusy
         self.is_reconnecting = False
         
     def connect(self, ip: str, port: int, reconnect: bool = False, auto_reconnect: bool = True) -> bool:
         """Připojí se k serveru (nebo se znovu připojí)."""
-        try:
+        try:        
             # Uložíme server info pro auto-reconnect
             self.server_ip = ip
             self.server_port = port
@@ -88,10 +91,9 @@ class ClientManager:
             
             print(f"Připojuji se na {ip}:{port}...")
             self.sock.connect((ip, port))
-            self.connected = True
+            self.connected = False
             self.is_reconnecting = False
-            self.reconnect_attempts = 0
-            
+                
             # Spustí listening thread
             self.running = True
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
@@ -100,6 +102,9 @@ class ClientManager:
             # Spustí vlákno pro zpracování zpráv
             self.msg_processing_thread = threading.Thread(target=self._process_message_queue, daemon=True)
             self.msg_processing_thread.start()
+                    
+            # Start heartbeat
+            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
             
             # Pošli CONNECT/STATUS s nickname
             if self.nickname:
@@ -107,6 +112,7 @@ class ClientManager:
                     # Reconnect - pošleme RECONNECT s nickname jako session ID
                     self.send_message(MessageType.RECONNECT, {
                         "nickname": f"{self.nickname}",
+                        "id": self.lastPacketID
                     })
                     print(f"🔄 Pokus o reconnect s session ID: {self.nickname}")
                 else:
@@ -114,9 +120,6 @@ class ClientManager:
                     self.send_message(MessageType.CONNECT, {
                         "nickname": f"{self.nickname}",
                     })
-                    
-            # Start heartbeat
-            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
             
             print("✅ Připojeno!")
             return True
@@ -128,9 +131,6 @@ class ClientManager:
     
     def send_message(self, msg_type: MessageType, data: Dict[str, Any]) -> bool|str:
         """Pošle zprávu (thread-safe)."""
-        if not self.connected:
-            return False
-            
         try:
             message = {
                 "type": msg_type.value,
@@ -171,7 +171,7 @@ class ClientManager:
     def _listen_loop(self):
         """Naslouchání a vkládání zpráv do fronty."""
         buffer = ""
-        while self.running and self.connected:
+        while self.running:
             try:
                 chunk = self.sock.recv(1024).decode('utf-8')
                 if not chunk:
@@ -209,13 +209,22 @@ class ClientManager:
         except Exception as _:
             pass
         
+        # 🆕 Kontrola, jestli nebyl auto-reconnect zakázán (např. kvůli DISCONNECT zprávě)
+        time.sleep(self.wait_before_reconnect)
+        if not self.auto_reconnect:
+            print("🚫 Auto-reconnect zakázán (pravděpodobně server/klient poslal DISCONNECT)")
+            if self.on_disconnect:
+                self.on_disconnect()
+            return
+        
         # Pokud máme povolený auto-reconnect A měli jsme nickname (tzn. byli jsme ve hře)
-        if self.auto_reconnect and self.nickname and was_connected:
+        if self.nickname and was_connected:
             print("🔄 Spouštím auto-reconnect...")
             self._start_reconnect()
         else:
             # Zavoláme disconnect callback
             if self.on_disconnect:
+                self.sock = None
                 self.on_disconnect()
     
     def _start_reconnect(self):
@@ -285,7 +294,16 @@ class ClientManager:
         try:
             msg = json.loads(json_str)
             msg_type = MessageType(msg["type"])
+            self.lastPacketID = msg["id"]
             
+            if msg_type == MessageType.DISCONNECT:
+                self.connected = False
+                self.guiManager.error_message = msg["data"]["message"]
+                
+            if msg_type == MessageType.RECONNECT or msg_type == MessageType.READY:
+                self.connected = True
+                self.guiManager.error_message = ""
+
             if self.on_message:
                 self.on_message(msg_type, msg.get("data", {}))
                 
@@ -294,7 +312,7 @@ class ClientManager:
     
     def _heartbeat_loop(self):
         """Pošle heartbeat každých 10s."""
-        while self.running and self.connected:
+        while self.connected and self.running:
             time.sleep(10)
             self.send_message(MessageType.HEARTBEAT, {})
     

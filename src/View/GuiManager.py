@@ -2,7 +2,7 @@ import pygame
 import math
 from .Obsticles import Button, InputBox, Color
 
-IMG_DIR = "images/wooden_table.jpg"
+IMG_DIR = "imagess/wooden_table.jpg"
 
 class GuiManager:
     def __init__(self):
@@ -24,6 +24,12 @@ class GuiManager:
         self.font_small = pygame.font.Font(None, 28)
         self.font = pygame.font.SysFont("Arial", 28, bold=True)
         
+        # Errors
+        self.error_message = ""
+        self.error_color = Color.RED
+        self.error_font = pygame.font.Font(None, 28)
+        self.waiting_message = ""
+                
         # Lobby komponenty
         self.setup_lobby()  
         
@@ -60,9 +66,7 @@ class GuiManager:
         self.nickname_input = InputBox(center_x - 150, 450, 300, 50, "Nickname:", "Player")
         
         # Tlačítka
-        # Původní: self.connect_button = Button(center_x - 100, 550, 200, 60, "Připojit", YELLOW, DARK_YELLOW)
         self.connect_button = Button(center_x - 100, 550, 200, 60, "Připojit", Color.YELLOW, Color.DARK_YELLOW)
-        # Původní: self.quit_button = Button(center_x - 100, 620, 200, 60, "Ukončit", RED, (180, 0, 0))
         self.quit_button = Button(center_x - 100, 620, 200, 60, "Ukončit", Color.RED, (180, 0, 0))
         self.back_button = Button(center_x - 100, 620, 200, 60, "Opustit hru", Color.BLUE, (0, 0, 255))
         
@@ -99,6 +103,19 @@ class GuiManager:
         self.nickname_input.draw(self.screen)
         self.connect_button.draw(self.screen)
         self.quit_button.draw(self.screen)
+
+        # 🔴 CHYBOVÁ ZPRÁVA
+        if self.error_message:
+            #text_width, text_height = self.font_small.size(self.error_message)
+            #x = self.width // 2 - text_width - 20
+            #y = 190
+            #rect = pygame.Rect(x, y, text_width, text_height)
+            #pygame.draw.rect(self.screen, Color.WHITE, rect)
+            error_surf = self.error_font.render(self.error_message, True, self.error_color)
+            error_rect = error_surf.get_rect(
+                center=(self.width // 2, 190)
+            )
+            self.screen.blit(error_surf, error_rect)
     
     def draw_connecting(self):
         """Vykreslí obrazovku připojování."""
@@ -114,16 +131,20 @@ class GuiManager:
     def draw_waiting(self, connected_players: int, required_players: int, player_number: int):
         """Vykreslí obrazovku čekání na ostatní hráče."""
         self.screen.blit(self.background, (0, 0))
-        self.draw_text("Čekám na hráče", self.font_large, Color.WHITE,
+        if self.waiting_message:
+            self.draw_text(self.waiting_message, self.font_large, Color.WHITE,
+                             y=self.height // 2 - 100, center=True)
+        else:
+            self.draw_text("Čekám na hráče", self.font_large, Color.WHITE,
                              y=self.height // 2 - 100, center=True)
         
-        player_text = f"{connected_players} / {required_players}"
-        self.draw_text(player_text, self.font_large, Color.GOLD,
-                             y=self.height // 2 - 20, center=True)
-        
+            player_text = f"{connected_players} / {required_players}"
+            self.draw_text(player_text, self.font_large, Color.GOLD,
+                                y=self.height // 2 - 20, center=True)
+            
         dots = "." * ((pygame.time.get_ticks() // 500) % 4)
         self.draw_text(dots, self.font_medium, Color.WHITE,
-                             y=self.height // 2 + 100, center=True)
+                            y=self.height // 2 + 100, center=True)
         
         if player_number is not None:
             info_text = f"Hráč #{player_number}"
@@ -169,7 +190,7 @@ class GuiManager:
             
             # Kreslíme kruh s alpha kanálem
             dot_surface = pygame.Surface((dot_size * 2, dot_size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(dot_surface, (Color.WHITE, alpha), (dot_size, dot_size), dot_size)
+            pygame.draw.circle(dot_surface, (Color.WHITE + (alpha, )), (dot_size, dot_size), dot_size)
             self.screen.blit(dot_surface, (x - dot_size, y - dot_size))
         
         # === PROGRESS BAR ===
@@ -236,24 +257,7 @@ class GuiManager:
             self.screen.blit(info_text, info_rect)
             y_offset += 30
         
-        # === TLAČÍTKO CANCEL ===
-        if hasattr(self, 'back_button'):
-            self.back_button.draw(self.screen)
-        else:
-            # Vytvoříme cancel button pokud neexistuje
-            cancel_button_rect = pygame.Rect(
-                (self.width - 200) // 2,
-                self.height - 100,
-                200, 50
-            )
-            
-            mouse_pos = pygame.mouse.get_pos()
-            is_hover = cancel_button_rect.collidepoint(mouse_pos)
-            
-            button_color = Color.RED if is_hover else Color.DARK_RED
-            pygame.draw.rect(self.screen, button_color, cancel_button_rect, border_radius=10)
-            pygame.draw.rect(self.screen, Color.WHITE, cancel_button_rect, width=2, border_radius=10)
-            
-            cancel_text = self.font_medium.render("Cancel", True, Color.WHITE)
-            cancel_rect = cancel_text.get_rect(center=cancel_button_rect.center)
-            self.screen.blit(cancel_text, cancel_rect)
+        self.back_button.draw(self.screen)
+
+    def draw_plr_rcnd(self, nickname: str):
+        self.draw_text(f"Hráč {nickname} úspěšně připojil.", self.font_large, Color.RED, center=True)

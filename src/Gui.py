@@ -22,7 +22,7 @@ class Gui:
         self.guiManager = GuiManager()
         
         # === CLIENT/SPOJENÍ ===
-        self.client = ClientManager()
+        self.client = ClientManager(self.guiManager)
         self.setup_client_callbacks()
         
         # === POČET HRÁČŮ ===
@@ -40,6 +40,7 @@ class Gui:
         self.clock = pygame.time.Clock()
         self.state = GameState.LOBBY
         self.lock = threading.Lock()
+        self.waiting_text = None
         
     # ============================================================
     # GameState mutex
@@ -118,9 +119,9 @@ class Gui:
             self.handle_result(data)
         
         # ===== STATUS - Odpojení klintů =====
-        elif msg_type == MessageType.WELCOME:
+        elif msg_type == MessageType.STATUS:
             self.handle_status(data)
-    
+            
     # ============================================================
     # HANDLERS PRO JEDNOTLIVÉ TYPY ZPRÁV
     # ============================================================
@@ -217,10 +218,10 @@ class Gui:
     
     def handle_disconnect(self):
         """Callback při odpojení od serveru."""
-        print("🔌 Odpojen od serveru!")
-        
-        if self.get_state() not in [GameState.PLAYING, GameState.WAITING]:
-            self.set_state(GameState.LOBBY)
+        print("🚫 Odpojen od serveru - zakazuji auto-reconnect")
+        self.auto_reconnect = False
+        self.is_reconnecting = False
+        self.set_state(GameState.LOBBY)
     
     def handle_reconnecting(self, attempt: int|None = None, max_attempts: int|None = None):
         """Callback volaný při pokusu o reconnect."""
@@ -248,17 +249,23 @@ class Gui:
         
         match code:
             case 1:
-                self.guiManager.draw_plr_disc()
-                time.sleep(3)
+                print("🔔 Vypisuji STATUS 1")
+                #self.gameManager.invalid = f"Hráč {nickname} se odpojil. HRA KONČÍ! Přesouvám do lobby..."
+                self.client.disconnect()
+                self.guiManager.error_message = f"Hráč {nickname} se odpojil. HRA UKONČENA! Kontumačně vyhráváte."
                 self.set_state(GameState.LOBBY)
             case 2:
-                self.guiManager.draw_plr_reconnecting(nickname)
+                print("🔔 Vypisuji STATUS 2")
+                self.guiManager.waiting_message = f"Hráč {nickname} se odpojil. Čekám jestli se nepřipojí"
+                self.set_state(GameState.WAITING)
             case 3:
-                time.sleep(3)
+                print("🔔 Vypisuji STATUS 3")
+                self.guiManager.waiting_message = ""
+                self.set_state(GameState.PLAYING)
+            case _:
+                print("🔔 Ani jeden status nebyl zavolán")
+            
                 
-
-        
-    
     # ============================================================
     # AKCE OD UŽIVATELE - Připojení k serveru
     # ============================================================

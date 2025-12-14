@@ -38,7 +38,7 @@ public:
     // ============================================================
     void handleTrick(ClientInfo* client);
     void handleBidding(std::string& label);
-    void handleCard(ClientInfo* client, Card card);
+    void handleCard(Card card);
 
 private:
     std::unique_ptr<NetworkManager> networkManager;

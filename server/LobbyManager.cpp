@@ -40,35 +40,6 @@ bool Lobby::canJoin() const {
 }
 
 // ============================================================
-// SYNCHRONIZAČNÍ BARIÉRA
-// ============================================================
-
-void Lobby::playerReady() {
-    std::unique_lock<std::mutex> lock(readyMutex);
-    clientManager->setreadyCount();
-    std::cout << "   🔔 Lobby #" << id << ": Hráč připraven ("
-              << clientManager->getreadyCount() << "/" << requiredPlayers << ")" << std::endl;
-
-    // Pokud jsou všichni připraveni, notifikujeme všechny čekající
-    if (clientManager->getreadyCount() % requiredPlayers == 0) {
-        std::cout << "   ✅ Lobby #" << id << ": Všichni hráči připraveni!" << std::endl;
-        readyCV.notify_all();
-    }
-}
-
-void Lobby::waitForAllPlayers() {
-    std::unique_lock<std::mutex> lock(readyMutex);
-
-    // Čekáme, dokud nejsou všichni připraveni
-    readyCV.wait(lock, [this] { return clientManager->getreadyCount() % requiredPlayers == 0; });
-}
-
-void Lobby::resetBarrier() {
-    std::unique_lock<std::mutex> lock(readyMutex);
-    readyCV.notify_all();
-}
-
-// ============================================================
 // LOBBYMANAGER - Správce všech herních místností
 // ============================================================
 

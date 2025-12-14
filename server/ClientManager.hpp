@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <nlohmann/json.hpp>
 
 // Konstanty pro komunikační protokol
 namespace messageType {
@@ -24,15 +25,14 @@ namespace messageType {
     const std::string STATUS = "STATUS";
     const std::string WELCOME = "WELCOME";
     const std::string STATE = "STATE";
-    const std::string DISCONNECT = "DISCONNECT";
     const std::string GAME_START = "GAME_START";
     const std::string RESULT = "RESULT";
+    const std::string DISCONNECT = "DISCONNECT";
     const std::string CLIENT_DATA = "CLIENT_DATA";
     const std::string YOUR_TURN = "YOUR_TURN";
-    const std::string WAIT = "WAIT";
     const std::string WAIT_LOBBY = "WAIT_LOBBY";
     const std::string INVALID = "INVALID";
-    const std::string OK = "OK";
+
 }
 
 struct ClientInfo {
@@ -44,6 +44,7 @@ struct ClientInfo {
     std::chrono::steady_clock::time_point lastSeen;
     bool isDisconnected;
     std::string nickname;
+    bool approved;
 };
 
 class NetworkManager;
@@ -67,10 +68,15 @@ public:
     void handleClientDisconnection(ClientInfo* client);
     void checkDisconnectedClients(bool running);
 
+    // Packets
+    void sendLossPackets(ClientInfo* client, int packetID);
+    nlohmann::json findPacketID(int clientNumber, int position);
+
     // Gettery
     int getConnectedCount() const;
     int getActiveCount() const;
     std::vector<ClientInfo*> getClients();
+    void addPlayer() { connectedPlayers++ ;}
 
     // Zprávy
     void broadcastMessage(const std::string& msgType, const std::string& message);
@@ -79,6 +85,7 @@ public:
     // Synchronizace jména
     int getreadyCount() const { return readyCount; };
     void setreadyCount() { readyCount++; };
+    void nullreadyCount() { readyCount = 0; };
 
 private:
     static constexpr int RECONNECT_TIMEOUT_SECONDS = 30;

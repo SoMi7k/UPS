@@ -79,7 +79,7 @@ class Game:
             
         self.licitator = self.players[int(game_data["licitator"])]
         self.active_player = self.is_active_player(int(game_data["active_player"]))
-        print(f"Já jsem hráč {self.clientNumber} a aktivní hráč je {int(game_data["active_player"])} => {self.active_player}")
+        print(f"Já jsem hráč {self.clientNumber} a aktivní hráč je {int(game_data['active_player'])} => {self.active_player}")
         
     def handle_trick(self):
         self.change_trick = False

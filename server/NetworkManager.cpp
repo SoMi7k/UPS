@@ -1,4 +1,3 @@
-#include "NetworkManager.hpp"
 #include <iostream>
 #include <cstring>
 #include <netinet/in.h>
@@ -8,11 +7,18 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+#include "NetworkManager.hpp"
+
 #define QUEUE_LENGTH 10
 
-NetworkManager::NetworkManager(int port)
-    : serverSocket(-1), port(port) {
-    std::cout << "🔧 NetworkManager vytvořen na portu " << port << std::endl;
+// 🆕 Konstruktor s IP adresou
+NetworkManager::NetworkManager(const std::string& ip, int port)
+    : bindIP(ip), serverSocket(-1), port(port), packetID(0) {
+
+    packets.resize(MAXIMUM_PACKET_SIZE, {});
+    std::cout << "🔧 NetworkManager inicializován" << std::endl;
+    std::cout << "   - Bind IP: " << bindIP << std::endl;
+    std::cout << "   - Port: " << port << std::endl;
 }
 
 NetworkManager::~NetworkManager() {
@@ -56,48 +62,46 @@ std::vector<std::string> NetworkManager::getLocalIPAddresses() {
 }
 
 bool NetworkManager::initializeSocket() {
+    std::cout << "🔌 Inicializuji socket..." << std::endl;
+
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket < 0) {
-        std::cerr << "Chyba při vytváření socketu" << std::endl;
+        std::cerr << "❌ Nepodařilo se vytvořit socket" << std::endl;
         return false;
     }
-    std::cout << "Socket vytvořen (fd: " << serverSocket << ")" << std::endl;
 
+    // Nastavení SO_REUSEADDR
     int opt = 1;
     if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        std::cerr << "Chyba při nastavení SO_REUSEADDR" << std::endl;
-        close(serverSocket);
-        return false;
+        std::cerr << "⚠️  Varování: Nepodařilo se nastavit SO_REUSEADDR" << std::endl;
     }
 
     sockaddr_in serverAddress{};
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-    std::cout << "\n📡 Server bude naslouchat na:" << std::endl;
-    auto addresses = getLocalIPAddresses();
-    for (const auto& addr : addresses) {
-        std::cout << "   -> " << addr << ":" << port << std::endl;
-    }
-    if (addresses.empty()) {
-        std::cout << "   -> 127.0.0.1:" << port << " (pouze localhost)" << std::endl;
-    }
-    std::cout << std::endl;
-
-    if (bind(serverSocket, reinterpret_cast<sockaddr*>(&serverAddress),
-             sizeof(serverAddress)) < 0) {
-        std::cerr << "Chyba při bindování socketu" << std::endl;
+    // 🆕 Použití specifikované IP místo INADDR_ANY
+    if (inet_pton(AF_INET, bindIP.c_str(), &serverAddress.sin_addr) <= 0) {
+        std::cerr << "❌ Neplatná IP adresa: " << bindIP << std::endl;
         close(serverSocket);
         return false;
     }
 
-    if (listen(serverSocket, QUEUE_LENGTH) < 0) {
-        std::cerr << "Chyba při naslouchání" << std::endl;
+    std::cout << "  -> Binding na " << bindIP << ":" << port << std::endl;
+
+    if (bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        std::cerr << "❌ Bind selhal (možná je port " << port << " již používán)" << std::endl;
         close(serverSocket);
         return false;
     }
 
+    if (listen(serverSocket, 10) < 0) {
+        std::cerr << "❌ Listen selhal" << std::endl;
+        close(serverSocket);
+        return false;
+    }
+
+    std::cout << "✅ Socket úspěšně inicializován na " << bindIP << ":" << port << std::endl;
     return true;
 }
 
@@ -140,10 +144,57 @@ void NetworkManager::closeServerSocket() {
     }
 }
 
-bool NetworkManager::sendMessage(int socket, const std::string& msgType, const std::string& message) {
+nlohmann::json NetworkManager::findPacketByID(int clientNumber, int packetID) {
+    // Kontrola rozsahu
+    if (packetID < 0 || packetID >= MAXIMUM_PACKET_SIZE) {
+        return nlohmann::json();
+    }
+
+    // Získáme packet na dané pozici
+    const auto& packet = packets[packetID];
+
+    // Kontrola zda packet existuje a patří správnému klientovi
+    if (packet.empty() || !packet.contains("clientID")) {
+        return nlohmann::json();
+    }
+
+    int packetClientID = static_cast<int>(packet["clientID"]);
+    if (packetClientID == clientNumber) {
+        return packet;
+    }
+
+    return nlohmann::json();
+}
+
+int NetworkManager::findLatestPacketID(int clientNumber) {
+    int latestID = -1;
+
+    // Procházíme odzadu od aktuálního packetID
+    int currentID = (packetID - 1 + MAXIMUM_PACKET_SIZE) % MAXIMUM_PACKET_SIZE;
+
+    for (int i = 0; i < MAXIMUM_PACKET_SIZE; i++) {
+        const auto& packet = packets[currentID];
+
+        if (!packet.empty() && packet.contains("clientID")) {
+            int packetClientID = static_cast<int>(packet["clientID"]);
+            if (packetClientID == clientNumber) {
+                latestID = static_cast<int>(packet["id"]);
+                break;
+            }
+        }
+
+        currentID = (currentID - 1 + MAXIMUM_PACKET_SIZE) % MAXIMUM_PACKET_SIZE;
+    }
+
+    return latestID;
+}
+
+bool NetworkManager::sendMessage(int socket, int clientNumber, const std::string& msgType, const std::string& message) {
     try {
         nlohmann::json msg;
+        msg["id"] = packetID;
         msg["type"] = msgType;
+        msg["clientID"] = clientNumber;
 
         try {
             msg["data"] = nlohmann::json::parse(message);
@@ -153,9 +204,21 @@ bool NetworkManager::sendMessage(int socket, const std::string& msgType, const s
 
         msg["timestamp"] = std::time(nullptr);
 
-        std::string serialized = msg.dump() + "\n";
-        ssize_t bytesSent = send(socket, serialized.c_str(), serialized.size(), 0);
+        // Uložíme packet před odesláním
+        if (clientNumber != -1) {
+           packets[packetID] = msg;
+        }
 
+        std::string serialized = msg.dump() + "\n";
+
+        std::cout << "📤 Posílám packet ID:" << packetID
+                  << " klientovi #" << clientNumber
+                  << " (type: " << msgType << ")" << std::endl;
+
+        // Inkrementace s wraparoundem
+        packetID = (packetID + 1) % MAXIMUM_PACKET_SIZE;
+
+        ssize_t bytesSent = send(socket, serialized.c_str(), serialized.size(), 0);
         return bytesSent == (ssize_t)serialized.size();
     }
     catch (const std::exception& e) {

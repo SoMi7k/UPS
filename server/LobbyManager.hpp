@@ -19,10 +19,6 @@ struct Lobby {
     std::unique_ptr<GameManager> gameManager;
     bool gameStarted;
 
-    // Synchronizační bariéra
-    std::mutex readyMutex;
-    std::condition_variable readyCV;
-
     Lobby(int lobbyId, int players, NetworkManager* netManager);
     ~Lobby();
 
@@ -30,11 +26,6 @@ struct Lobby {
     int getActiveCount() const;
     bool isFull() const;
     bool canJoin() const;
-
-    // Metody pro bariéru
-    void playerReady();
-    void waitForAllPlayers();
-    void resetBarrier();
 };
 
 class LobbyManager {

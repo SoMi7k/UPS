@@ -3,7 +3,6 @@
 
 #include "NetworkManager.hpp"
 #include "ClientManager.hpp"
-#include "GameManager.hpp"
 #include "MessageHandler.hpp"
 #include "LobbyManager.hpp"
 #include <memory>
@@ -16,18 +15,21 @@ private:
     std::unique_ptr<LobbyManager> lobbyManager;
     std::unique_ptr<MessageHandler> messageHandler;
 
+    std::string ip;
     int port;
     std::atomic<bool> running;
     int requiredPlayers;
     int lobbyCount;
     std::thread acceptThread;
 
+    void startGame(Lobby* lobby);
     void acceptClients();
     void handleClient(ClientInfo* client, Lobby* lobby);
     void cleanup();
 
 public:
-    GameServer(int port, int requiredPlayers = 2, int lobbies = 1);
+    // 🆕 Konstruktor s IP adresou
+    GameServer(const std::string& ip, int port, int requiredPlayers, int lobbies);
     ~GameServer();
 
     void start();
