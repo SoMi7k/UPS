@@ -5,6 +5,10 @@ build/
 dist/
 wheels/
 *.egg-info
+cmake-build-debug
+CMakeLists.txt
+server/buildtor
+marias.exe
 
 # Virtual environments
 .venv

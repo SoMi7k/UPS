@@ -12,7 +12,7 @@ class GameManager:
         self.gui = guiManager
         
         self.game = None
-        self.rec = True
+        self.click_lock = False
         
         self.required_players = required_players
         self.invalid = None
@@ -265,7 +265,7 @@ class GameManager:
             else:
                 # 2. Další framy - kontrolujeme čas
                 elapsed = pygame.time.get_ticks() - self.trick_display_start
-                if elapsed >= 3000:  # 3 sekundy
+                if elapsed >= 2000:  # 3 sekundy
                     # 3. Čas vypršel - pošleme zprávu
                     self.game.handle_trick()
                     self.client.send_empty_trick()
@@ -288,9 +288,6 @@ class GameManager:
         elif self.game.state == State.LICITACE_TALON:
             self.show_removing_to_talon()
         elif self.game.state == State.LICITACE_HRA:
-            #if self.client.number == 1 and self.rec:
-            #    self.rec = False
-            #    self.client.sock.close()
             self.show_mode_option()  
         elif self.game.state == State.LICITACE_DOBRY_SPATNY:
             self.show_first_bidding()  

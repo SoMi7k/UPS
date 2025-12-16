@@ -41,8 +41,10 @@ class ClientManager:
         self.auto_reconnect = False
         self.is_reconnecting = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 6
+        self.max_reconnect_attempts = 5
         self.reconnect_delay = 5.0
+        
+        self.msgCounter = 0
     
     def connect(self, ip: str, port: int, reconnect: bool = False, auto_reconnect: bool = True) -> bool:
         """Připojí se k serveru."""
@@ -256,9 +258,16 @@ class ClientManager:
             # Zavoláme callback
             if self.on_message:
                 self.on_message(msg_type, fields)
+            
+            self.msgCounter = 0
                 
         except Exception as e:
             print(f"❌ Chyba parsování zprávy: {e}")
+            self.msgCounter += 1
+            if self.msgCounter == 3:
+                self.guiManager.error_message = "Server posílá nesprávné zprávy!"
+                self.disconnect()
+                self.msgCounter = 0
     
     def _handle_connection_lost(self):
         """Zpracuje ztrátu spojení."""

@@ -68,7 +68,7 @@ Viz soubor [LICENSE](LICENSE).
 ```bash
 > cd UPS/server
 > make
-> ./marias.exe
+> ./build/marias.exe
 Pro zobrazení nápovědy
 > ./marias.exe -h
 ```

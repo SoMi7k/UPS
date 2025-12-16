@@ -35,14 +35,20 @@ class GuiManager:
         self.setup_lobby()  
         
         # Pozadí
+        self.background_cache = None
         self.background = self.create_background()
         
     def create_background(self):
-        """Vytvoří gradient pozadí nebo načte obrázek."""
+        """Vytvoří gradient pozadí nebo načte obrázek - S CACHOVÁNÍM."""
+        if self.background_cache is not None:
+            return self.background_cache
+        
         try:
             # Zkusíme načíst obrázek
-            image = pygame.image.load(IMG_DIR).convert_alpha()
-            return pygame.transform.scale(image, (self.width, self.height))
+            image = pygame.image.load(IMG_DIR).convert()  # 🆕 .convert() místo .convert_alpha()
+            scaled = pygame.transform.scale(image, (self.width, self.height))
+            self.background_cache = scaled
+            return scaled
         except Exception as _:
             # Fallback na gradient
             print("⚠ Nepodařilo se načíst pozadí, použiji gradient")
@@ -51,6 +57,7 @@ class GuiManager:
                 color_value = int(20 + (y / self.height) * 40)
                 pygame.draw.line(background, (color_value, color_value + 20, color_value + 10), 
                                  (0, y), (self.width, y))
+            self.background_cache = background
             return background
         
     # ============================================================

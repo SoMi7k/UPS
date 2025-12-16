@@ -106,7 +106,7 @@ void MessageHandler::handleReset(ClientInfo* client, const std::string& data) {
     if (data == "ANO") {
         clientManager->setreadyCount();
         clientManager->sendToPlayer(client->playerNumber, Protocol::MessageType::WAIT_LOBBY,
-            {std::to_string(clientManager->getConnectedCount())});
+            {std::to_string(clientManager->getreadyCount())});
         std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
     } else {
         client->approved = false;

@@ -44,6 +44,38 @@ class Gui:
         self.lock = threading.Lock()
         self.waiting_text = None
         
+        # === Optimalizační flagy ===
+        self.needs_redraw = True
+        self.last_mouse_pos = None
+        self.fps_limit = 30
+        
+    # ============================================================
+    # Inteligentní překreslování
+    # ============================================================
+    
+    def mark_for_redraw(self):
+        """Označí obrazovku pro překreslení."""
+        self.needs_redraw = True
+    
+    def should_redraw(self) -> bool:
+        """Rozhodne, zda je potřeba překreslit."""
+        # Vždy překresli pokud je flag nastaven
+        if self.needs_redraw:
+            return True
+        
+        # Překresli pokud se hýbe myš (pro hover efekty)
+        current_mouse_pos = pygame.mouse.get_pos()
+        if current_mouse_pos != self.last_mouse_pos:
+            self.last_mouse_pos = current_mouse_pos
+            return True
+        
+        # Animované stavy potřebují neustálé překreslování
+        if self.get_state() in [GameState.CONNECTING, GameState.RECONNECTING]:
+            return True
+        
+        return False
+    
+        
     # ============================================================
     # GameState mutex
     # ============================================================
@@ -355,42 +387,62 @@ class Gui:
     
     def handle_playing_event(self, event):
         """Zpracuje herní události (klikání na karty nebo tlačítka)."""
-        if event.type == pygame.MOUSEBUTTONDOWN and self.gameManager.active_rects:
-            for rect, label in self.gameManager.active_rects:
-                if rect.collidepoint(event.pos):
-                    print(f"🎯 Kliknuto na: {label}")
-                    
-                    # Rozlišíme, jestli jde o kartu nebo volbu
-                    if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
-                        # 🃏 karta
-                        self.client.send_message(MessageType.CARD, [label])
-                        print(f"📤 Odesílám kartu: {label}")
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.gameManager.click_lock = False
+            return
+
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return
+
+        if self.gameManager.click_lock:
+            return
+
+        if not self.gameManager.game.active_player:
+            return
+
+        if not self.gameManager.active_rects:
+            return
+
+        for rect, label in self.gameManager.active_rects:
+            if rect.collidepoint(event.pos):
+                self.gameManager.click_lock = True
+                print(f"🎯 Kliknuto na: {label}")
+
+                # Rozlišení typu akce
+                if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
+                    self.client.send_message(MessageType.CARD, [label])
+                    print(f"📤 Odesílám kartu: {label}")
+                else:
+                    if label in ("ANO", "NE"):
+                        self.client.send_message(MessageType.RESET, [label])
                     else:
-                        # 🔘 tlačítko volby (např. "BETL", "DURCH", "Špatný", "ANO")
-                        if label == "ANO" or label == "NE":
-                            self.client.send_message(MessageType.RESET, [label])
-                            print(f"📤 Odesílám volbu: {label}")
-                        else:                        
-                            self.client.send_message(MessageType.BIDDING, [label])
-                            print(f"📤 Odesílám volbu: {label}")
-                    
-                    self.gameManager.game.active_player = False
-                    break
+                        self.client.send_message(MessageType.BIDDING, [label])
+                    print(f"📤 Odesílám volbu: {label}")
+
+                self.gameManager.game.active_player = False
+                break
     
     # ============================================================
     # HLAVNÍ SMYČKA
     # ============================================================
     
     def run(self):
-        """Hlavní smyčka aplikace."""
+        """Hlavní smyčka aplikace - OPTIMALIZOVANÁ."""
         running = True
         
         while running:
-            for event in pygame.event.get():
+            # === EVENT HANDLING ===
+            events = pygame.event.get()
+            
+            for event in events:
                 if event.type == pygame.QUIT:
                     self.client.disconnect(stop_auto_reconnect=True)
                     running = False
                     continue
+                
+                # Při jakémkoli eventu vynutit překreslení
+                self.mark_for_redraw()
                     
                 # Zpracování událostí podle stavu
                 if self.get_state() == GameState.LOBBY:
@@ -398,7 +450,11 @@ class Gui:
                     if action == "connect":
                         self.connect_to_server(False)
                     elif action == "reconnect":
-                        self.connect_to_server(True)
+                        if self.client.nickname:
+                            self.connect_to_server(True)
+                        else:
+                            self.guiManager.error_message = "Reconnect nelze provést!"
+                            
                 elif self.get_state() == GameState.HELP:
                     self.handle_help_events(event)
                         
@@ -411,22 +467,26 @@ class Gui:
                 elif self.get_state() == GameState.PLAYING:
                     self.handle_playing_event(event)
             
-            # Vykreslování podle stavu
-            if self.get_state() == GameState.LOBBY:
-                self.guiManager.draw_lobby()
-            elif self.get_state() == GameState.HELP:
-                self.guiManager.draw_help()
-            elif self.get_state() == GameState.WAITING:
-                self.guiManager.draw_waiting(self.connected_players, self.required_players, self.client.number)
-            elif self.get_state() == GameState.CONNECTING:
-                self.guiManager.draw_connecting()
-            elif self.get_state() == GameState.RECONNECTING:
-                self.guiManager.draw_reconnecting(self.reconnect_attempt, self.reconnect_max)
-            elif self.get_state() == GameState.PLAYING:
-                self.gameManager.draw_playing()
+            # === RENDERING (pouze když je potřeba) ===
+            if self.should_redraw():
+                if self.get_state() == GameState.LOBBY:
+                    self.guiManager.draw_lobby()
+                elif self.get_state() == GameState.HELP:
+                    self.guiManager.draw_help()
+                elif self.get_state() == GameState.WAITING:
+                    self.guiManager.draw_waiting(self.connected_players, self.required_players, self.client.number)
+                elif self.get_state() == GameState.CONNECTING:
+                    self.guiManager.draw_connecting()
+                elif self.get_state() == GameState.RECONNECTING:
+                    self.guiManager.draw_reconnecting(self.reconnect_attempt, self.reconnect_max)
+                elif self.get_state() == GameState.PLAYING:
+                    self.gameManager.draw_playing()
+                
+                pygame.display.flip()
+                self.needs_redraw = False  # Resetuj flag
             
-            pygame.display.flip()
-            self.clock.tick(60)
+            # 🆕 Snížená frekvence z 60 na 30 FPS
+            self.clock.tick(self.fps_limit)
         
         # Cleanup
         if self.client.connected:
