@@ -2,6 +2,7 @@
 #include <iostream>
 #include <csignal>
 #include <cstring>
+#include <regex>
 
 // Globální ukazatel na server pro signal handler
 GameServer* globalServer = nullptr;
@@ -44,11 +45,20 @@ int main(int argc, char* argv[]) {
     int lobbies = 1;
     int players = 2;
 
-    // Parsování argumentů
+    const std::regex ip_regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
-            ip = argv[++i];
-            std::cout << "ℹ️  Nastavena IP adresa: " << ip << std::endl;
+            std::string potential_ip = argv[i + 1];
+
+            if (std::regex_match(potential_ip, ip_regex)) {
+                ip = argv[++i];
+                std::cout << "ℹ️  Nastavena IP adresa: " << ip << std::endl;
+            } else {
+                std::cout << "❌ Chyba: Hodnota '" << potential_ip << "' není platná IP adresa ve formátu xxx.xxx.xxx.xxx." << std::endl;
+                i++;
+                return 0;
+            }
         }
         else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             try {

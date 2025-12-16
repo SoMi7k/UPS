@@ -6,34 +6,8 @@
 #include <string>
 #include <thread>
 #include <chrono>
-#include <nlohmann/json.hpp>
 
-// Konstanty pro komunikační protokol
-namespace messageType {
-    // Client -> Server
-    const std::string CONNECT = "CONNECT";
-    const std::string RECONNECT = "RECONNECT";
-    const std::string READY = "READY";
-    const std::string CARD = "CARD";
-    const std::string BIDDING = "BIDDING";
-    const std::string RESET = "RESET";
-    const std::string HEARTBEAT = "HEARTBEAT";
-    const std::string TRICK = "TRICK";
-
-    // Server -> Client
-    const std::string ERROR = "ERROR";
-    const std::string STATUS = "STATUS";
-    const std::string WELCOME = "WELCOME";
-    const std::string STATE = "STATE";
-    const std::string GAME_START = "GAME_START";
-    const std::string RESULT = "RESULT";
-    const std::string DISCONNECT = "DISCONNECT";
-    const std::string CLIENT_DATA = "CLIENT_DATA";
-    const std::string YOUR_TURN = "YOUR_TURN";
-    const std::string WAIT_LOBBY = "WAIT_LOBBY";
-    const std::string INVALID = "INVALID";
-
-}
+#include "Protocol.hpp"
 
 struct ClientInfo {
     int socket;
@@ -70,7 +44,7 @@ public:
 
     // Packets
     void sendLossPackets(ClientInfo* client, int packetID);
-    nlohmann::json findPacketID(int clientNumber, int position);
+    u_int8_t findPacketID(int clientNumber, int position);
 
     // Gettery
     int getConnectedCount() const;
@@ -79,8 +53,8 @@ public:
     void addPlayer() { connectedPlayers++ ;}
 
     // Zprávy
-    void broadcastMessage(const std::string& msgType, const std::string& message);
-    void sendToPlayer(int playerNumber, const std::string& msgType, const std::string& message);
+    void broadcastMessage(Protocol::MessageType msgType, std::vector<std::string> msg);
+    void sendToPlayer(int playerNumber, Protocol::MessageType msgType, std::vector<std::string> msg);
 
     // Synchronizace jména
     int getreadyCount() const { return readyCount; };
@@ -88,8 +62,8 @@ public:
     void nullreadyCount() { readyCount = 0; };
 
 private:
-    static constexpr int RECONNECT_TIMEOUT_SECONDS = 30;
-
+    static constexpr int HEARTBEAT_TIMEOUT_SECONDS = 15;
+    static constexpr int RECONNECT_TIMEOUT_SECONDS = 60;
     std::vector<ClientInfo*> clients;
     std::mutex clientsMutex;
     int requiredPlayers;

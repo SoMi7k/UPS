@@ -86,7 +86,7 @@ void ClientManager::disconnectAll() {
 
     for (auto* client : clientsCopy) {
         if (client && client->connected) {
-            networkManager->sendMessage(client->socket, client->playerNumber, messageType::DISCONNECT, "Server se vypíná");
+            networkManager->sendMessage(client->socket, client->playerNumber, Protocol::MessageType::DISCONNECT, {"Server se vypíná"});
             shutdown(client->socket, SHUT_RDWR);
             close(client->socket);
             client->connected = false;
@@ -116,7 +116,9 @@ void ClientManager::disconnectClient(ClientInfo* client) {
         auto it = std::find(clients.begin(), clients.end(), client);
         if (it != clients.end()) {
             clients.erase(it);
-            connectedPlayers--;
+            if (!client->isDisconnected) {
+                connectedPlayers--;
+            }
             std::cout << "  - Odstraněn ze seznamu" << std::endl;
             std::cout << "  - Zbývá " << connectedPlayers << "/" << requiredPlayers << " hráčů" << std::endl;
         }
@@ -127,15 +129,15 @@ void ClientManager::disconnectClient(ClientInfo* client) {
     }
 
     // Notifikace ostatních - teď je bezpečná
-    nlohmann::json statusData;
-    statusData["code"] = 1;
-    statusData["nickname"] = client->nickname;
-    statusData["connectedPlayers"] = connectedPlayers;
+    std::vector<std::string> statusData;
+    statusData.emplace_back("1"); // code
+    statusData.emplace_back(client->nickname);
+    //statusData.emplace_back(std::to_string(connectedPlayers));
 
     if (client->approved) {
         for (auto c : clients) {
             if (c->playerNumber != client->playerNumber) {
-                sendToPlayer(c->playerNumber, messageType::STATUS, statusData.dump());
+                sendToPlayer(c->playerNumber, Protocol::MessageType::STATUS, statusData);
             }
         }
     }
@@ -196,13 +198,13 @@ bool ClientManager::reconnectClient(ClientInfo* oldClient, int newSocket) {
     oldClient->isDisconnected = false;
     oldClient->lastSeen = std::chrono::steady_clock::now();
 
-    nlohmann::json statusData;
-    statusData["code"] = 3;
-    statusData["nickname"] = oldClient->nickname;
+    std::vector<std::string> statusData;
+    statusData.emplace_back("3"); // code
+    statusData.emplace_back(oldClient->nickname);
 
     for (auto c : clients) {
         if (c->playerNumber != oldClient->playerNumber) {
-            sendToPlayer(c->playerNumber, messageType::STATUS, statusData.dump());
+            sendToPlayer(c->playerNumber, Protocol::MessageType::STATUS, statusData);
         }
     }
 
@@ -214,6 +216,10 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
 
     std::cout << "\n🔌 Hráč #" << client->playerNumber << " se odpojil - čekám na reconnect" << std::endl;
 
+    if (!client->isDisconnected) {
+        connectedPlayers--;
+    }
+
     client->connected = false;
     client->isDisconnected = true;
     client->lastSeen = std::chrono::steady_clock::now();
@@ -224,16 +230,14 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
         client->socket = -1;
     }
 
-    connectedPlayers--;
+    std::vector<std::string> statusData;
+    statusData.emplace_back("2"); // code
+    statusData.emplace_back(client->nickname);
+    statusData.emplace_back(std::to_string(RECONNECT_TIMEOUT_SECONDS));
 
-    nlohmann::json statusData;
-    statusData["code"] = 2;
-    statusData["nickname"] = client->nickname;
-    statusData["reconnectTimeout"] = RECONNECT_TIMEOUT_SECONDS;
-
-    for (auto c : clients) {
+    for (auto& c : clients) {
         if (c->playerNumber != client->playerNumber) {
-            sendToPlayer(c->playerNumber, messageType::STATUS, statusData.dump());
+            sendToPlayer(c->playerNumber, Protocol::MessageType::STATUS, statusData);
         }
     }
 
@@ -243,28 +247,51 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
 
 void ClientManager::checkDisconnectedClients(bool running) {
     while (running) {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(2));  // 🆕 Častější kontrola
 
         std::vector<ClientInfo*> toRemove;
+        std::vector<ClientInfo*> toDisconnect;
 
         {
             std::lock_guard<std::mutex> lock(clientsMutex);
             auto now = std::chrono::steady_clock::now();
 
             for (auto* client : clients) {
-                if (client && client->isDisconnected) {
-                    auto elapsed = now - client->lastSeen;
-                    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+                if (!client) continue;
 
+                auto elapsed = now - client->lastSeen;
+                auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+                // === PŘÍPAD 1: Klient je označen jako disconnected (čekáme na reconnect) ===
+                if (client->isDisconnected) {
                     if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
-                        std::cout << "⏱️ Timeout pro hráče #" << client->playerNumber
-                                  << " - odstraňuji permanentně" << std::endl;
+                        std::cout << "⏱️ Timeout pro odpojeného hráče #" << client->playerNumber
+                                  << " (" << seconds << "s) - odstraňuji permanentně" << std::endl;
                         toRemove.push_back(client);
+                    } else {
+                        std::cout << "⏳ Hráč #" << client->playerNumber
+                                  << " odpojený " << seconds << "s / "
+                                  << RECONNECT_TIMEOUT_SECONDS << "s" << std::endl;
+                    }
+                }
+                // === PŘÍPAD 2: Klient je connected, ale dlouho neposlal heartbeat ===
+                else if (client->connected && client->approved) {
+                    if (seconds >= HEARTBEAT_TIMEOUT_SECONDS) {
+                        std::cout << "⚠️ Hráč #" << client->playerNumber
+                                  << " neodpovídá " << seconds << "s (timeout: "
+                                  << HEARTBEAT_TIMEOUT_SECONDS << "s)" << std::endl;
+                        toDisconnect.push_back(client);
                     }
                 }
             }
         }
 
+        // === Nejdřív označíme jako disconnected (necháme reconnect šanci) ===
+        for (auto* client : toDisconnect) {
+            handleClientDisconnection(client);
+        }
+
+        // === Pak permanentně odebereme ty, kterým vypršel reconnect timeout ===
         for (auto* client : toRemove) {
             disconnectClient(client);
         }
@@ -292,23 +319,23 @@ std::vector<ClientInfo*> ClientManager::getClients() {
     return clients;
 }
 
-void ClientManager::broadcastMessage(const std::string& msgType, const std::string& message) {
+void ClientManager::broadcastMessage(Protocol::MessageType msgType, std::vector<std::string> msg) {
     std::lock_guard<std::mutex> lock(clientsMutex);
-    std::cout << "📢 Broadcast: " << msgType << std::endl;
+    std::cout << "📢 Broadcast: " <<  static_cast<int>(msgType)  << std::endl;
 
     for (auto* client : clients) {
         if (client && client->connected) {
-            networkManager->sendMessage(client->socket, client->playerNumber, msgType, message);
+            networkManager->sendMessage(client->socket, client->playerNumber, msgType, msg);
         }
     }
 }
 
-void ClientManager::sendToPlayer(int playerNumber, const std::string& msgType, const std::string& message) {
+void ClientManager::sendToPlayer(int playerNumber, Protocol::MessageType msgType, std::vector<std::string> msg) {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
     for (auto* client : clients) {
         if (client && client->playerNumber == playerNumber && client->connected) {
-            networkManager->sendMessage(client->socket, client->playerNumber, msgType, message);
+            networkManager->sendMessage(client->socket, client->playerNumber, msgType, msg);
             return;
         }
     }
@@ -316,26 +343,26 @@ void ClientManager::sendToPlayer(int playerNumber, const std::string& msgType, c
     std::cerr << "⚠ Hráč #" << playerNumber << " nebyl nalezen" << std::endl;
 }
 
-nlohmann::json ClientManager::findPacketID(int clientNumber, int packetID) {
-    std::vector<nlohmann::json> packets = networkManager->getPackets();  // Reference pro efektivitu
+u_int8_t ClientManager::findPacketID(int clientNumber, int packetID) {
+    std::vector<std::vector<u_int8_t>> packets = networkManager->getPackets();  // Reference pro efektivitu
 
     if (packetID == -1) {
         for (int i = packets.size() - 1; i >= 0; i--) {
-            int packetClient = static_cast<int>(packets[i]["clientID"]);
+            const std::vector<u_int8_t>& packet = packets[i];
+            Protocol::Message msg = Protocol::deserialize(packet);
+            int packetClient = msg.clientID;
             if (packetClient == clientNumber) {
-                nlohmann::json data;
-                data["packetID"] = packetClient;
-                return data;
+                return msg.packetID;;
             }
         }
     } else {
         for (int i = packets.size() - 1; i >= 0; i--) {
-            int packetClient = static_cast<int>(packets[i]["clientID"]);
-            int actualPacketID = static_cast<int>(packets[i]["packetID"]);
+            const std::vector<u_int8_t>& packet = packets[i];
+            Protocol::Message msg = Protocol::deserialize(packet);
+            int packetClient = msg.clientID;
+            int actualPacketID = msg.packetID;
             if (packetClient == clientNumber && packetID == actualPacketID) {
-                nlohmann::json data;
-                data["packetID"] = packetClient;
-                return data;
+                return msg.packetID;
             }
         }
     }
@@ -364,18 +391,19 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
     }
 
     // Sebereme všechny chybějící packety
-    std::vector<nlohmann::json> missingPackets;
+    std::vector<std::vector<u_int8_t>> missingPackets;
 
     // Procházíme od (lastReceived + 1) do latest (včetně)
     for (int id = lastReceivedPacketID + 1; id <= latestPacketID; id++) {
         // Ošetření wraparound (pokud ID překročilo 255)
         int actualID = id % NetworkManager::MAXIMUM_PACKET_SIZE;
 
-        nlohmann::json packet = networkManager->findPacketByID(client->playerNumber, actualID);
+        std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, actualID);
+        Protocol::Message msg = Protocol::deserialize(packet);
 
         if (!packet.empty()) {
             missingPackets.push_back(packet);
-            std::cout << "   📦 Našel packet ID:" << actualID << " (type: " << packet["type"] << ")" << std::endl;
+            std::cout << "   📦 Našel packet ID:" << actualID << " (type: " << static_cast<int>(msg.type) << ")" << std::endl;
         } else {
             std::cerr << "   ⚠️ Packet ID:" << actualID << " nenalezen nebo přepsán" << std::endl;
         }
@@ -386,7 +414,7 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
 
         // Nejdřív od (lastReceived + 1) do 254
         for (int id = lastReceivedPacketID + 1; id < NetworkManager::MAXIMUM_PACKET_SIZE; id++) {
-            nlohmann::json packet = networkManager->findPacketByID(client->playerNumber, id);
+            std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, id);
             if (!packet.empty()) {
                 missingPackets.push_back(packet);
                 std::cout << "   📦 Našel packet ID:" << id << " (wraparound)" << std::endl;
@@ -395,7 +423,7 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
 
         // Pak od 0 do latest
         for (int id = 0; id <= latestPacketID; id++) {
-            nlohmann::json packet = networkManager->findPacketByID(client->playerNumber, id);
+            std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, id);
             if (!packet.empty()) {
                 missingPackets.push_back(packet);
                 std::cout << "   📦 Našel packet ID:" << id << " (wraparound)" << std::endl;
@@ -407,13 +435,12 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
 
     // Posíláme packety ve správném pořadí (od nejstaršího po nejnovější)
     for (const auto& packet : missingPackets) {
-        std::string msgType = packet["type"];
-        std::string msgData = packet["data"].dump();
+        Protocol::Message msg = Protocol::deserialize(packet);
 
-        std::cout << "   📤 Posílám packet ID:" << packet["id"]
-                  << " (type: " << msgType << ")" << std::endl;
+        std::cout << "   📤 Posílám packet ID:" << msg.packetID
+                  << " (type: " << static_cast<int>(msg.type) << ")" << std::endl;
 
-        networkManager->sendMessage(client->socket, client->playerNumber, msgType, msgData);
+        networkManager->sendMessage(client->socket, client->playerNumber, msg.type, msg.fields);
 
         // Malá pauza mezi packety pro zabránění zahlcení
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

@@ -3,7 +3,8 @@
 
 #include <string>
 #include <vector>
-#include <nlohmann/json.hpp>
+
+#include "Protocol.hpp"
 
 class NetworkManager {
 public:
@@ -18,21 +19,17 @@ public:
     void closeServerSocket();
 
     // Zprávy
-    bool sendMessage(int socket, int clientNumber, const std::string& msgType, const std::string& message);
-    std::string receiveMessage(int socket);
-    
-    // JSON operace
-    nlohmann::json deserialize(const std::string& msg);
-    std::string serialize(const std::string& msgType, const nlohmann::json& data);
+    bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType, std::vector<std::string> msg);
+    std::vector<uint8_t> receiveMessage(int socket);
 
     // Packets
-    nlohmann::json findPacketByID(int clientNumber, int packetID);
+    std::vector<u_int8_t> findPacketByID(int clientNumber, int packetID);
     int findLatestPacketID(int clientNumber);
 
     // Gettery
     int getServerSocket() const { return serverSocket; }
     int getPort() const { return port; }
-    const std::vector<nlohmann::json>& getPackets() const { return packets; }
+    const std::vector<std::vector<u_int8_t>>& getPackets() const { return packets; }
     int getCurrentPacketID() const { return packetID; }
 
 private:
@@ -40,9 +37,11 @@ private:
     int serverSocket;
     int port;
     int packetID;
-    std::vector<nlohmann::json> packets;
+    std::vector<std::vector<u_int8_t>> packets;
 
     std::vector<std::string> getLocalIPAddresses();
+    std::string debug_print_bytes(const std::vector<uint8_t>& buffer);
+    bool recvExact(int socket, uint8_t* buffer, size_t len);
 };
 
 #endif // NETWORK_MANAGER_HPP

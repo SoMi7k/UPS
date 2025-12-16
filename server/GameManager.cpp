@@ -1,6 +1,7 @@
 #include "GameManager.hpp"
 #include "MessageHandler.hpp"
 #include "NetworkManager.hpp"
+#include "Protocol.hpp"
 #include <iostream>
 #include <random>
 
@@ -35,8 +36,7 @@ void GameManager::startGame() {
     std::cout << "\n📢 Hra se načítá..." << std::endl;
 
     for (int playerNum = 0; playerNum < requiredPlayers; playerNum++) {
-        nlohmann::json none = {};
-        clientManager->sendToPlayer(playerNum, messageType::GAME_START, none.dump());
+        clientManager->sendToPlayer(playerNum, Protocol::MessageType::GAME_START, {});
         std::cout << "✓ Hráč dostal záznam o začátku hry " << playerNum << std::endl;
     }
 
@@ -60,8 +60,8 @@ void GameManager::startGame() {
     std::cout << "\n📢 Posílám GAME_START všem hráčům..." << std::endl;
 
     for (int playerNum = 0; playerNum < requiredPlayers; playerNum++) {
-        nlohmann::json gameData = serializeGameStart(playerNum);
-        clientManager->sendToPlayer(playerNum, messageType::GAME_START, gameData.dump());
+        std::vector<std::string> gameData = serializeGameStart(playerNum);
+        clientManager->sendToPlayer(playerNum, Protocol::MessageType::GAME_START, gameData);
         std::cout << "✓ GAME_START odesláno hráči " << playerNum << std::endl;
     }
 
@@ -86,95 +86,84 @@ void GameManager::startGame() {
 // ============================================================
 // SERIALIZACE
 // ============================================================
-nlohmann::json GameManager::serializeGameState() {
-    nlohmann::json state;
-    state["state"] = game->getState();
-    state["change_state"] = game->stateChanged;
-    state["gameStarted"] = game->gameStarted;
+std::vector<std::string> GameManager::serializeGameState() {
+    // state|stateChanged|gameStarted|mode|trumph|isPlayedCards|cards|change_trick
+    std::vector<std::string> gameState;
+
+    gameState.emplace_back(std::to_string(static_cast<int>(game->getState())));
+    gameState.emplace_back(std::to_string(game->stateChanged));
+    gameState.emplace_back(std::to_string(game->gameStarted));
 
     if (game->gameStarted) {
-        state["mode"] = modeToString(game->getGameLogic().getMode());
+        gameState.emplace_back(std::to_string(static_cast<int>(game->getGameLogic().getMode())));
         if (game->getGameLogic().getMode() == Mode::HRA) {
-            state["trump"] = suitToString(game->getGameLogic().getTrumph().value());
+            gameState.emplace_back(suitToString(game->getGameLogic().getTrumph().value()));
         } else {
-            state["trump"] = "";
+            gameState.emplace_back("");
         }
-        state["isPlayedCards"] = 0;
 
         if (!game->getPlayedCards().empty()) {
-            state["isPlayedCards"] = 1;
-            nlohmann::json cardsArray = nlohmann::json::array();
+            gameState.emplace_back("1"); // isPlayedCards
+            std::string cardsArray;
             for (auto map : game->getPlayedCards()) {
                 std::cout << "PlayedCard  - " << map.second.toString() << std::endl;
-                std::string str_card = map.second.toString();
-                cardsArray.push_back(str_card);
+                cardsArray += map.second.toString();
+                cardsArray += ":";
             }
-            state["played_cards"] = cardsArray;
-            state["change_trick"] = (game->isWaitingForTrickEnd()) ? 1 : 0;
-            /*
-            if (game->getPlayedCards().size() == requiredPlayers) {
-                state["winner"] = game->getTrickWinner();
-            } else {
-                state["winner"] = game->getTrickWinner();
-            }
-            */
+            gameState.emplace_back(cardsArray);
+            int changeTrick = game->isWaitingForTrickEnd() ? 1 : 0;
+            gameState.emplace_back(std::to_string(changeTrick));
+        } else {
+            gameState.emplace_back("0" ); // isPlayedCards
         }
     }
 
-    return state;
+    return gameState;
 }
 
-nlohmann::json GameManager::serializeGameStart(int playerNumber) {
-    nlohmann::json gameData;
-    gameData["client"] = serializePlayer(playerNumber);
-    // Ostatní hráči
-    nlohmann::json playersArray = nlohmann::json::array();
-
+std::vector<std::string> GameManager::serializeGameStart(int playerNumber) {
+    // <PLAYER>|<players>|<licitator>|<activePlayer>
+    std::vector<std::string> gameData;
+    gameData.push_back(serializePlayer(playerNumber));
+    std::string playersArray;
     for (auto player : game->getPlayers()) {
         if (playerNumber != player->getNumber()) {
-            std::string playerInfo = std::to_string(player->getNumber()) + "-" + player->getNick();
-            playersArray.push_back(playerInfo);
+            playersArray += std::to_string(player->getNumber()) + "-" + player->getNick();
+            playersArray += ":";
         }
     }
-    gameData["players"] = playersArray;
-    gameData["licitator"] = game->getLicitator()->getNumber();
-    gameData["active_player"] = game->getActivePlayer()->getNumber();
+    gameData.push_back(playersArray);
+    gameData.push_back(std::to_string(game->getLicitator()->getNumber()));
+    gameData.push_back(std::to_string(game->getActivePlayer()->getNumber()));
 
     return gameData;
 }
 
-nlohmann::json GameManager::serializePlayer(int playerNumber) {
-    nlohmann::json client;
-
+std::string GameManager::serializePlayer(int playerNumber) {
+    // <number>-<nickname>|<cards>
     Player* player = game->getPlayer(playerNumber);
-    if (player == nullptr) {
-        client["error"] = "Invalid player number";
-        return client;
+    if (!player) return "NONE";
+
+    std::string msg;
+    msg += std::to_string(player->getNumber());
+    msg += "-";
+    msg += player->getNick();
+    msg += "|";
+
+    for (auto& card : player->getHand().getCards()) {
+        msg += card.toString();
+        msg += ":";
     }
-
-    // Příklad serializace – uprav podle struktury Player
-    client["number"] = player->getNumber();
-    client["nickname"] = player->getNick();
-
-    // Pokud má hráč ruku (karty apod.)
-    nlohmann::json cards = nlohmann::json::array();
-    for (const auto& card : player->getHand().getCards()) {
-        //std::cout << "  - " << card.toString() << std::endl;
-        cards.push_back(card.toString());
-    }
-    client["hand"] = cards;
-
-    return client;
-}
-
-nlohmann::json GameManager::serializeInvalid(int playerNumber) {
-    nlohmann::json msg;
-    Player* player = game->getPlayer(playerNumber);
-    msg["data"] = player->getInvalidMove();
 
     return msg;
 }
 
+std::vector<std::string> GameManager::serializeInvalid(int playerNumber) {
+    std::vector<std::string> msg;
+    Player* player = game->getPlayer(playerNumber);
+    msg.emplace_back(player->getInvalidMove());
+    return msg;
+}
 
 // ============================================================
 // HERNÍ LOGIKA - SendGameState, NotifyActivePlayer
@@ -185,8 +174,8 @@ void GameManager::sendInvalidPlayer(int playerNumber) {
 
     std::lock_guard<std::mutex> lock(gameMutex);
 
-    nlohmann::json msg = serializeInvalid(playerNumber);
-    clientManager->sendToPlayer(playerNumber, messageType::INVALID, msg.dump());
+    std::vector<std::string> msg = serializeInvalid(playerNumber);
+    clientManager->sendToPlayer(playerNumber, Protocol::MessageType::INVALID, msg);
 
     std::cout << "✅ Chybný tah odeslán hráči #" << playerNumber << std::endl;
 }
@@ -196,8 +185,8 @@ void GameManager::sendGameStateToPlayer(int playerNumber) {
 
     std::lock_guard<std::mutex> lock(gameMutex);
 
-    nlohmann::json gameState = serializeGameState();
-    clientManager->sendToPlayer(playerNumber, messageType::STATE, gameState.dump());
+    std::vector<std::string> gameState = serializeGameState();
+    clientManager->sendToPlayer(playerNumber, Protocol::MessageType::STATE, gameState);
 
     std::cout << "✅ Stav hry odeslán hráči #" << playerNumber << std::endl;
 }
@@ -214,11 +203,11 @@ void GameManager::notifyActivePlayer() {
 
     std::cout << "🔔 Notifikuji hráče #" << activePlayer << " že je na tahu" << std::endl;
 
-    nlohmann::json turnData;
-    turnData["message"] = "Je váš tah";
-    turnData["playerNumber"] = activePlayer;
+    std::vector<std::string> turnData;
+    turnData.emplace_back("Je váš tah");
+    turnData.emplace_back(std::to_string(activePlayer));
 
-    clientManager->sendToPlayer(activePlayer, messageType::YOUR_TURN, turnData.dump());
+    clientManager->sendToPlayer(activePlayer, Protocol::MessageType::YOUR_TURN, turnData);
 
     std::cout << "✅ YOUR_TURN odesláno hráči #" << activePlayer << std::endl;
 }
@@ -268,8 +257,8 @@ void GameManager::handleBidding(std::string& label) {
 
     if (label == "BETL" || label == "DURCH") {
         for (auto player : players) {
-            nlohmann::json data = serializeGameStart(player->getNumber());
-            clientManager->sendToPlayer(player->getNumber(), messageType::GAME_START, data.dump());
+            std::vector<std::string> data = serializeGameStart(player->getNumber());
+            clientManager->sendToPlayer(player->getNumber(), Protocol::MessageType::GAME_START, data);
         }
     } else {
         std::lock_guard<std::mutex> lock(gameMutex);
@@ -277,9 +266,8 @@ void GameManager::handleBidding(std::string& label) {
     }
 
     if (game->getState() == State::LICITACE_TALON) {
-        nlohmann::json clientData;
-        clientData["client"] = serializePlayer(game->getActivePlayer()->getNumber());
-        clientManager->sendToPlayer(game->getActivePlayer()->getNumber(), messageType::CLIENT_DATA, clientData.dump());
+        std::string clientData = serializePlayer(game->getActivePlayer()->getNumber());
+        clientManager->sendToPlayer(game->getActivePlayer()->getNumber(), Protocol::MessageType::CLIENT_DATA, {clientData});
     }
 }
 
@@ -312,15 +300,14 @@ void GameManager::handleCard(Card card) {
             std::lock_guard<std::mutex> lock(gameMutex);
             game->stateChanged = 0;
         }
-        nlohmann::json clientData;
-        clientData["client"] = serializePlayer(actualActivePlayerNumber);
-        clientManager->sendToPlayer(actualActivePlayerNumber, messageType::CLIENT_DATA, clientData.dump());
+        std::string clientData = serializePlayer(actualActivePlayerNumber);
+        clientManager->sendToPlayer(actualActivePlayerNumber, Protocol::MessageType::CLIENT_DATA, {clientData});
 
         if (game->getState() == State::END) {
             clientManager->nullreadyCount();
-            nlohmann::json gameResult;
-            gameResult["gameResult"] = game->getResult();
-            clientManager->broadcastMessage(messageType::RESULT, gameResult.dump());
+            std::pair<int, int> res = game->getResult();
+            std::string gameResult = std::to_string(res.first) + ":" + std::to_string(res.second);
+            clientManager->broadcastMessage(Protocol::MessageType::RESULT, {gameResult});
         }
 
         if (!game->isWaitingForTrickEnd()) {

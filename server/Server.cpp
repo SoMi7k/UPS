@@ -65,7 +65,7 @@ void GameServer::acceptClients() {
 
         if (!lobby) {
             std::cout << "⚠ Všechny místnosti jsou plné, odmítám klienta" << std::endl;
-            networkManager->sendMessage(clientSocket, -1, messageType::ERROR, "All lobbies are full");
+            networkManager->sendMessage(clientSocket, -1, Protocol::MessageType::ERROR, {"All lobbies are full"});
             close(clientSocket);
             continue;
         }
@@ -115,7 +115,7 @@ void GameServer::startGame(Lobby* lobby) {
 }
 
 // ============================================================
-// HANDLE CLIENT - Obsluha jednoho klienta
+// HANDLE CLIENT - Spuštění threadu pro klienta
 // ============================================================
 void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
     if (client->playerNumber != -1) {
@@ -123,56 +123,72 @@ void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
                   << " (Lobby #" << lobby->id << ") zahájeno <<<" << std::endl;
 
         // ===== KROK 1: Poslání WELCOME zprávy =====
-        nlohmann::json welcomeData;
-        welcomeData["playerNumber"] = client->playerNumber;
-        welcomeData["lobby"] = lobby->id;
-        welcomeData["requiredPlayers"] = requiredPlayers;
+        std::vector<std::string> welcomeData;
+        welcomeData.emplace_back(std::to_string(client->playerNumber));
+        welcomeData.emplace_back(std::to_string(lobby->id));
+        welcomeData.emplace_back(std::to_string(requiredPlayers));
 
-        networkManager->sendMessage(client->socket, client->playerNumber, messageType::WELCOME, welcomeData.dump());
+        networkManager->sendMessage(client->socket, client->playerNumber,
+                                   Protocol::MessageType::WELCOME, welcomeData);
     }
 
     // ===== KROK 2: Čekání na NICKNAME nebo RECONNECT =====
-    std::string initialMessage = networkManager->receiveMessage(client->socket);
+    std::vector<u_int8_t> initialMessage = networkManager->receiveMessage(client->socket);
 
     if (initialMessage.empty()) {
-        std::cerr << "⚠ Hráč #" << client->playerNumber << " se odpojil před odesláním zprávy" << std::endl;
+        std::cerr << "⚠ Hráč #" << client->playerNumber
+                  << " se odpojil před odesláním zprávy (socket spadl)" << std::endl;
         lobby->clientManager->disconnectClient(client);
         return;
     }
 
-    nlohmann::json msgJson = networkManager->deserialize(initialMessage);
-    if (msgJson.empty()) {
+    Protocol::Message msg = Protocol::deserialize(initialMessage);
+
+    std::cout << "\n📨 Od hráče #" << client->playerNumber
+              << " msgType: " << static_cast<int>(msg.type)
+              << " (Lobby #" << lobby->id << "): ";
+
+    for (size_t i = 0; i < msg.fields.size(); ++i) {
+        std::cout << msg.fields[i];
+        if (i + 1 < msg.fields.size()) {
+            std::cout << " | ";
+        }
+    }
+    std::cout << std::endl;
+
+    if (msg.type != Protocol::MessageType::CONNECT && msg.type != Protocol::MessageType::RECONNECT) {
+        std::cerr << "⚠ Hráč #" << client->playerNumber << " poslal nesprávný msgType" << std::endl;
+        networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::DISCONNECT, {"Nesprávný msgType"});
         lobby->clientManager->disconnectClient(client);
         return;
     }
-
-    std::string msgType = msgJson["type"];
 
     // Kontrola zda jde o RECONNECT
-    if (msgType == messageType::RECONNECT && msgJson["data"].contains("nickname")) {
-        std::string nickname = msgJson["data"]["nickname"];
+    if (msg.type == Protocol::MessageType::RECONNECT && !msg.fields[0].empty()) {
+        std::string nickname = msg.fields[0];
         std::cout << "🔄 Pokus o reconnect se session ID: " << nickname << std::endl;
 
         ClientInfo* oldClient = lobby->clientManager->findDisconnectedClient(nickname);
 
         if (oldClient && lobby->clientManager->reconnectClient(oldClient, client->socket)) {
             std::cout << "✅ Hráč #" << oldClient->playerNumber << " úspěšně reconnectnut" << std::endl;
-            int packetID = static_cast<int>(msgJson["data"]["id"]);
+            int packetID = std::atoi(msg.fields[1].c_str());
             lobby->clientManager->sendLossPackets(oldClient, packetID);
             client = oldClient;
-            networkManager->sendMessage(client->socket, client->playerNumber,messageType::RECONNECT, {});
-            // Pokračujeme se starým clientem
+            networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::RECONNECT, {});
         } else {
             std::cerr << "❌ Reconnect selhal" << std::endl;
-            nlohmann::json errorData;
-            errorData["message"] = "Reconnect failed - session expired or invalid";
-            networkManager->sendMessage(client->socket, client->playerNumber,messageType::DISCONNECT, errorData.dump());
+            networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::DISCONNECT,
+                                       {"Reconnect failed - session expired or invalid"});
             lobby->clientManager->disconnectClient(client);
             return;
         }
     } else {
         // Běžný nový hráč
-        std::string nickname = msgJson["data"]["nickname"];
+        std::string nickname = msg.fields[0];
         client->nickname = nickname;
         std::cout << "  -> Nickname přijat od hráče #" << client->playerNumber << std::endl;
 
@@ -182,23 +198,24 @@ void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
                 sameNickname = true;
             }
         }
-        if (!sameNickname) {
-            nlohmann::json waitData;
-            waitData["current"] = lobby->getConnectedCount();
 
-            networkManager->sendMessage(client->socket, client->playerNumber, messageType::READY, {});
+        if (!sameNickname) {
+            networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::READY, {});
             std::cout << "  -> READY odesláno hráči #" << client->playerNumber << std::endl;
             client->approved = true;
 
             if (lobby->getConnectedCount() < requiredPlayers) {
-                networkManager->sendMessage(client->socket, client->playerNumber, messageType::WAIT_LOBBY, waitData.dump());
+                networkManager->sendMessage(client->socket, client->playerNumber,
+                                          Protocol::MessageType::WAIT_LOBBY,
+                                          {std::to_string(lobby->getConnectedCount())});
                 std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
             }
         } else {
             std::cerr << "❌ Chyba: Stejné jméno!" << std::endl;
-            nlohmann::json errorData;
-            errorData["message"] = "Chyba: Stejné jméno!";
-            networkManager->sendMessage(client->socket, client->playerNumber, messageType::DISCONNECT, errorData.dump());
+            networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::DISCONNECT,
+                                       {"Chyba: Stejné jméno!"});
             lobby->clientManager->disconnectClient(client);
             return;
         }
@@ -213,33 +230,29 @@ void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
         lobby->clientManager->setreadyCount();
     }
 
+    // 🆕 HLAVNÍ PŘÍJMACÍ LOOP S DETEKCÍ ODPOJENÍ
     while (running && client->connected) {
-        std::string message = networkManager->receiveMessage(client->socket);
+        std::vector<u_int8_t> recvMsg = networkManager->receiveMessage(client->socket);
 
-        if (message.empty()) {
-            std::cout << "\n⚠ Hráč #" << client->playerNumber << " ztratil spojení" << std::endl;
+        // 🔴 DETEKCE ODPOJENÍ - prázdný buffer znamená spadlý socket
+        if (recvMsg.empty()) {
+            std::cout << "\n⚠ Hráč #" << client->playerNumber
+                      << " ztratil spojení (socket spadl nebo byl zavřen)" << std::endl;
             lobby->clientManager->handleClientDisconnection(client);
             break;
         }
 
-        // Aktualizace last seen
+        // Aktualizace last seen (pouze pokud zpráva přišla)
         client->lastSeen = std::chrono::steady_clock::now();
 
-        // Odstranění koncových znaků
-        while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) {
-            message.pop_back();
-        }
-
-        std::cout << "\n📨 Od hráče #" << client->playerNumber
-                  << " (Lobby #" << lobby->id << "): \"" << message << "\"" << std::endl;
-
         try {
-            handler.processClientMessage(client, message);
+            handler.processClientMessage(client, recvMsg);
         } catch (const std::exception& e) {
             std::cerr << "❌ Výjimka při zpracování zprávy: " << e.what() << std::endl;
-            nlohmann::json errorData;
-            errorData["message"] = "Interní chyba serveru";
-            networkManager->sendMessage(client->socket, client->playerNumber, messageType::DISCONNECT, errorData.dump());
+            networkManager->sendMessage(client->socket, client->playerNumber,
+                                       Protocol::MessageType::DISCONNECT,
+                                       {"Interní chyba serveru"});
+            break;
         }
     }
 
@@ -282,6 +295,8 @@ void GameServer::start() {
 
     // Spuštění timeout checkeru pro všechny místnosti
     std::thread timeoutThread([this]() {
+        std::cout << "🕒 Spouštím timeout checker..." << std::endl;
+
         while (running) {
             for (int i = 1; i <= lobbyCount; i++) {
                 Lobby* lobby = lobbyManager->getLobby(i);
@@ -289,8 +304,11 @@ void GameServer::start() {
                     lobby->clientManager->checkDisconnectedClients(running);
                 }
             }
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            std::this_thread::sleep_for(std::chrono::seconds(2));
         }
+
+        std::cout << "🛑 Timeout checker zastaven" << std::endl;
     });
     timeoutThread.detach();
 

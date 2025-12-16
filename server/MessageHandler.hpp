@@ -2,7 +2,6 @@
 #define MESSAGE_HANDLER_HPP
 
 #include <string>
-#include <nlohmann/json.hpp>
 #include "GameManager.hpp"
 
 class GameManager;
@@ -13,7 +12,7 @@ public:
     MessageHandler(NetworkManager* networkManager, ClientManager* clientManager, GameManager* gameManager);
 
     // Zpracování zpráv
-    void processClientMessage(ClientInfo* client, const std::string& message);
+    void processClientMessage(ClientInfo* client, std::vector<uint8_t> recvMsg);
 
 private:
     NetworkManager* networkManager;
@@ -23,14 +22,14 @@ private:
     // Jednotlivé handlery pro různé typy zpráv
     void handleHeartbeat(ClientInfo* client);
     void handleTrick(ClientInfo* client);
-    void handleCard(const nlohmann::json& data);
-    void handleBidding(const nlohmann::json& data);
-    void handleReset(ClientInfo* client, const nlohmann::json& data);
+    void handleCard(const std::string&);
+    void handleBidding(std::string& data);
+    void handleReset(ClientInfo* client, const std::string& data);
     void handleDisconnect(ClientInfo* client);
     void handleConnect(ClientInfo* client);
 
     // Pomocné funkce
-    void sendError(ClientInfo* client, const std::string& msgType, const std::string& errorMessage);
+    void sendError(ClientInfo* client, Protocol::MessageType, const std::string& errorMessage);
 };
 
 #endif // MESSAGE_HANDLER_HPP

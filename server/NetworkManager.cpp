@@ -1,11 +1,13 @@
 #include <iostream>
-#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <sstream>
+#include <iomanip>
+#include <cstring>
 
 #include "NetworkManager.hpp"
 
@@ -144,26 +146,27 @@ void NetworkManager::closeServerSocket() {
     }
 }
 
-nlohmann::json NetworkManager::findPacketByID(int clientNumber, int packetID) {
+std::vector<u_int8_t> NetworkManager::findPacketByID(int clientNumber, int packetID) {
     // Kontrola rozsahu
     if (packetID < 0 || packetID >= MAXIMUM_PACKET_SIZE) {
-        return nlohmann::json();
+        return {};
     }
 
     // Získáme packet na dané pozici
     const auto& packet = packets[packetID];
+    Protocol::Message msg = Protocol::deserialize(packet);
 
     // Kontrola zda packet existuje a patří správnému klientovi
-    if (packet.empty() || !packet.contains("clientID")) {
-        return nlohmann::json();
+    if (packet.empty()) {
+        return {};
     }
 
-    int packetClientID = static_cast<int>(packet["clientID"]);
+    int packetClientID = msg.clientID;
     if (packetClientID == clientNumber) {
         return packet;
     }
 
-    return nlohmann::json();
+    return {};
 }
 
 int NetworkManager::findLatestPacketID(int clientNumber) {
@@ -175,10 +178,11 @@ int NetworkManager::findLatestPacketID(int clientNumber) {
     for (int i = 0; i < MAXIMUM_PACKET_SIZE; i++) {
         const auto& packet = packets[currentID];
 
-        if (!packet.empty() && packet.contains("clientID")) {
-            int packetClientID = static_cast<int>(packet["clientID"]);
+        Protocol::Message msg = Protocol::deserialize(packet);
+        if (!packet.empty()) {
+            int packetClientID = msg.clientID;
             if (packetClientID == clientNumber) {
-                latestID = static_cast<int>(packet["id"]);
+                latestID = msg.packetID;
                 break;
             }
         }
@@ -189,90 +193,128 @@ int NetworkManager::findLatestPacketID(int clientNumber) {
     return latestID;
 }
 
-bool NetworkManager::sendMessage(int socket, int clientNumber, const std::string& msgType, const std::string& message) {
-    try {
-        nlohmann::json msg;
-        msg["id"] = packetID;
-        msg["type"] = msgType;
-        msg["clientID"] = clientNumber;
+bool NetworkManager::sendMessage(int socket, int clientNumber, Protocol::MessageType msgType, std::vector<std::string> msg) {
+    // Převedeme na Protocol::Message
+    Protocol::Message message = Protocol::createMessage(
+        static_cast<uint8_t>(packetID),
+        static_cast<uint8_t>(clientNumber),
+        msgType,
+        msg
+    );
 
-        try {
-            msg["data"] = nlohmann::json::parse(message);
-        } catch (...) {
-            msg["data"] = message;
-        }
+    // Serializace do binárního bufferu
+    std::vector<uint8_t> buffer = Protocol::serialize(message);
 
-        msg["timestamp"] = std::time(nullptr);
-
-        // Uložíme packet před odesláním
-        if (clientNumber != -1) {
-           packets[packetID] = msg;
-        }
-
-        std::string serialized = msg.dump() + "\n";
-
-        std::cout << "📤 Posílám packet ID:" << packetID
-                  << " klientovi #" << clientNumber
-                  << " (type: " << msgType << ")" << std::endl;
-
-        // Inkrementace s wraparoundem
-        packetID = (packetID + 1) % MAXIMUM_PACKET_SIZE;
-
-        ssize_t bytesSent = send(socket, serialized.c_str(), serialized.size(), 0);
-        return bytesSent == (ssize_t)serialized.size();
+    // Uložíme packet před odesláním
+    if (clientNumber != -1) {
+        packets[packetID] = buffer;
     }
-    catch (const std::exception& e) {
-        std::cerr << "❌ Chyba odeslání: " << e.what() << std::endl;
+
+    std::cout << "📤 Posílám packet ID:" << packetID << " klientovi #" << clientNumber
+        << " (type: " << static_cast<int>(message.type) << ")" << std::endl;
+
+    // Inkrementace ID s wraparoundem
+    packetID = (packetID + 1) % MAXIMUM_PACKET_SIZE;
+
+    // Odeslání binárních dat
+    ssize_t sent = send(socket, buffer.data(), buffer.size(), MSG_NOSIGNAL);
+
+    if (sent <= 0) {
+        std::cerr << "❌ Send selhal, socket mrtvý\n";
         return false;
     }
-}
 
-std::string NetworkManager::receiveMessage(int socket) {
-    std::string buffer;
-    char chunk[256];
-    ssize_t bytesReceived;
-
-    while (true) {
-        bytesReceived = recv(socket, chunk, sizeof(chunk), 0);
-
-        if (bytesReceived <= 0) {
-            return "";
-        }
-
-        buffer.append(chunk, bytesReceived);
-
-        size_t pos = buffer.find('\n');
-        if (pos != std::string::npos) {
-            std::string message = buffer.substr(0, pos);
-            return message;
-        }
-    }
-}
-
-nlohmann::json NetworkManager::deserialize(const std::string& msg) {
-    if (msg.empty()) {
-        return nlohmann::json{};
+    if (sent != static_cast<ssize_t>(buffer.size())) {
+        std::cerr << "❌ Neúplné odeslání packetu\n";
+        return false;
     }
 
-    try {
-        nlohmann::json parsed = nlohmann::json::parse(msg);
-        std::cout << "📥 Typ zprávy: " << parsed["type"] << std::endl;
-
-        if (parsed.contains("data")) {
-            std::cout << "📥 Data: " << parsed["data"] << std::endl;
-        }
-        return parsed;
-
-    } catch (const std::exception& e) {
-        std::cerr << "❌ Chyba při parsování JSON: " << e.what() << std::endl;
-        return nlohmann::json{};
-    }
+    return true;
 }
 
-std::string NetworkManager::serialize(const std::string& msgType, const nlohmann::json& data) {
-    nlohmann::json msg;
-    msg["type"] = msgType;
-    msg["data"] = data;
-    msg["timestamp"] = std::time(nullptr);
-    return msg.dump();
+std::vector<uint8_t> NetworkManager::receiveMessage(int socket) {
+    std::vector<uint8_t> buffer;
+
+    // 1️⃣ Načti size (2B)
+    uint8_t sizeBytes[2];
+    if (!recvExact(socket, sizeBytes, 2)) {
+        std::cout << "🔌 receiveMessage: Selhalo čtení velikosti zprávy" << std::endl;
+        return {};  // Prázdný buffer = odpojení
+    }
+
+    uint16_t msgSize = sizeBytes[0] | (sizeBytes[1] << 8);
+
+    if (msgSize < Protocol::HEADER_SIZE || msgSize > Protocol::MAX_MESSAGE_SIZE) {
+        std::cerr << "❌ [NET] Neplatná velikost: " << msgSize << std::endl;
+        return {};
+    }
+
+    buffer.resize(msgSize);
+    buffer[0] = sizeBytes[0];
+    buffer[1] = sizeBytes[1];
+
+    // 2️⃣ Načti zbytek
+    if (!recvExact(socket, buffer.data() + 2, msgSize - 2)) {
+        std::cout << "🔌 receiveMessage: Selhalo čtení těla zprávy" << std::endl;
+        return {};  // Prázdný buffer = odpojení
+    }
+
+    std::cout << "✅ Přijat packet: " << debug_print_bytes(buffer) << std::endl;
+
+    return buffer;
+}
+
+bool NetworkManager::recvExact(int socket, uint8_t* buffer, size_t len) {
+    size_t total = 0;
+
+    while (total < len) {
+        ssize_t r = recv(socket, buffer + total, len - total, 0);
+
+        // 🔴 DETEKCE ODPOJENÍ
+        if (r == 0) {
+            // Socket byl zavřen klientem (graceful shutdown)
+            std::cout << "🔌 Socket " << socket << " byl zavřen klientem (recv vrátil 0)" << std::endl;
+            return false;
+        }
+
+        if (r < 0) {
+            // Chyba při čtení
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                std::cout << "⏱️ Socket " << socket << " timeout" << std::endl;
+            } else if (errno == ECONNRESET) {
+                std::cout << "🔌 Socket " << socket << " - connection reset by peer" << std::endl;
+            } else if (errno == EPIPE) {
+                std::cout << "🔌 Socket " << socket << " - broken pipe" << std::endl;
+            } else {
+                std::cerr << "❌ Socket " << socket << " chyba: "
+                          << strerror(errno) << " (errno: " << errno << ")" << std::endl;
+            }
+            return false;
+        }
+
+        total += r;
+    }
+
+    return true;
+}
+
+// Pomocná funkce pro konverzi std::vector<uint8_t> na debugovací string (např. "b'\x0b\x00...'")
+std::string NetworkManager::debug_print_bytes(const std::vector<uint8_t>& buffer) {
+    std::stringstream ss;
+    ss << "b'";
+
+    // Procházíme všechny byty ve vektoru
+    for (size_t i = 0; i < buffer.size(); ++i) {
+        uint8_t byte = buffer[i];
+
+        // Zkusíme tisknout čitelné ASCII znaky (pro lepší přehlednost)
+        if (byte >= 32 && byte <= 126 && byte != 39 && byte != 92) { // 39=' / 92=\
+            ss << static_cast<char>(byte);
+        } else {
+            // Tiskneme hexadecimálně \xXX
+            ss << "\\x" << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
+        }
+    }
+    ss << "'";
+    return ss.str();
 }

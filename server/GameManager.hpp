@@ -2,10 +2,10 @@
 #define GAME_MANAGER_HPP
 
 #include "ClientManager.hpp"
-#include "../game/Game.hpp"
+#include "Protocol.hpp"
+#include "game/Game.hpp"
 #include <condition_variable>
 #include <mutex>
-#include <nlohmann/json.hpp>
 
 class ClientManager;
 class NetworkManager;
@@ -21,10 +21,10 @@ public:
     // ============================================================
     // PRIVÁTNÍ METODY - Serializace
     // ============================================================
-    nlohmann::json serializeGameStart(int playerNumber);
-    nlohmann::json serializeGameState();
-    nlohmann::json serializePlayer(int playerNumber);
-    nlohmann::json serializeInvalid(int playerNumber);
+    std::vector<std::string> serializeGameStart(int playerNumber);
+    std::vector<std::string> serializeGameState();
+    std::string serializePlayer(int playerNumber);
+    std::vector<std::string> serializeInvalid(int playerNumber);
 
     // ============================================================
     // PRIVÁTNÍ METODY - Herní logika
