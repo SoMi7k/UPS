@@ -43,6 +43,7 @@ Viz soubor [LICENSE](LICENSE).
 - Kompilační nástroj g++
 
 **Client**
+
 *Mělo by fungovat i bez virtuálního prostředí*
 
 - Windows
