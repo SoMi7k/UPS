@@ -1,6 +1,6 @@
 import pygame
 import math
-from .Obsticles import Button, InputBox, Color, HelpButton
+from .Obstacles import Button, InputBox, Color, HelpButton
 
 IMG_DIR = "imagess/wooden_table.jpg"
 

@@ -18,24 +18,18 @@ public:
     void startGame();
     void initPlayers();
 
-    // ============================================================
-    // PRIVÁTNÍ METODY - Serializace
-    // ============================================================
+    // Serializace
     std::vector<std::string> serializeGameStart(int playerNumber);
     std::vector<std::string> serializeGameState();
     std::string serializePlayer(int playerNumber);
     std::vector<std::string> serializeInvalid(int playerNumber);
 
-    // ============================================================
-    // PRIVÁTNÍ METODY - Herní logika
-    // ============================================================
+    // Herní logika
     void sendGameStateToPlayer(int playerNumber);
     void sendInvalidPlayer(int playerNumber);
     void notifyActivePlayer();
 
-    // ============================================================
-    // PRIVÁTNÍ METODY - Handlery
-    // ============================================================
+    // Handlery
     void handleTrick(ClientInfo* client);
     void handleBidding(std::string& label);
     void handleCard(Card card);
@@ -43,14 +37,12 @@ public:
 private:
     std::unique_ptr<NetworkManager> networkManager;
     std::unique_ptr<ClientManager> clientManager;
-    int requiredPlayers;
-
-    int free_number = 0;
-    std::unique_ptr<Game> game;    // Instance hry
-    std::mutex gameMutex;          // Mutex pro thread-safe přístup ke hře
-    std::mutex trickMutex;
-    std::condition_variable trickCV;
-    int trickResponses = 0;
+    int requiredPlayers;             // Požadovaný počet hráčů
+    std::unique_ptr<Game> game;      // Instance hry
+    std::mutex gameMutex;            // Mutex pro thread-safe přístup ke hře
+    std::mutex trickMutex;           // Mutex pro thread-safe přístup ke štychu
+    std::condition_variable trickCV; // Podmíková promměná pro další štych
+    int trickResponses = 0;          // Počet hráčů připravených na další štych
 };
 
 #endif

@@ -1,0 +1,456 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[czech]{babel}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+\geometry{margin=2.5cm}
+
+% Nastavení pro kód
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{pythonstyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    language=Python
+}
+
+\lstset{style=pythonstyle}
+
+% Záhlaví a zápatí
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Klientská aplikace pro hru Mariáš}
+\lhead{Technická dokumentace}
+\rfoot{Strana \thepage}
+
+\title{\textbf{Technická dokumentace} \\ Klientská aplikace pro karetní hru Mariáš}
+\author{Projekt UPS}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{Úvod}
+
+Tento dokument popisuje architekturu a implementaci klientské aplikace pro online karetní hru Mariáš. Aplikace je napsána v jazyce Python s využitím knihovny Pygame pro grafické rozhraní a implementuje binární síťový protokol pro komunikaci se serverem.
+
+\subsection{Účel aplikace}
+
+Klientská aplikace slouží jako uživatelské rozhraní pro hru Mariáš, která umožňuje:
+\begin{itemize}
+    \item Připojení k hernímu serveru přes TCP/IP
+    \item Grafické zobrazení herního stavu
+    \item Interakci s hráčem prostřednictvím GUI
+    \item Automatické znovupřipojení při výpadku spojení
+    \item Zobrazení pravidel hry
+\end{itemize}
+
+\subsection{Technologie}
+
+Projekt využívá následující technologie:
+\begin{itemize}
+    \item \textbf{Python 3.x} -- programovací jazyk
+    \item \textbf{Pygame} -- knihovna pro grafické rozhraní a herní logiku
+    \item \textbf{Socket} -- síťová komunikace
+    \item \textbf{Threading} -- asynchronní zpracování síťových zpráv
+    \item \textbf{Enum} -- typově bezpečné výčtové typy
+\end{itemize}
+
+\section{Architektura aplikace}
+
+Aplikace je navržena podle principů objektově orientovaného programování a je rozdělena do několika logických celků.
+
+\subsection{Struktura projektu}
+
+\begin{verbatim}
+client/
+├── main.py                    # Vstupní bod aplikace
+├── images/                    # Grafické assety (karty, pozadí)
+└── src/
+    ├── Gui.py                # Hlavní třída GUI a stavový automat
+    ├── GameManager.py        # Správa herní logiky a vykreslování
+    ├── Client/
+    │   ├── ClientManager.py  # Síťová komunikace
+    │   └── Protocol.py       # Definice protokolu
+    ├── Game/
+    │   ├── Game.py          # Herní stav a pravidla
+    │   ├── Card.py          # Reprezentace karet
+    │   └── Player.py        # Reprezentace hráčů
+    └── View/
+        ├── GuiManager.py    # Vykreslování UI komponent
+        ├── Obstacles.py     # UI prvky (tlačítka, inputy)
+        └── Validator.py     # Validace uživatelských vstupů
+\end{verbatim}
+
+\subsection{Diagram komponent}
+
+Aplikace se skládá z následujících hlavních komponent:
+
+\begin{itemize}
+    \item \textbf{Gui} -- Řídící třída, která spravuje stavový automat aplikace
+    \item \textbf{ClientManager} -- Zajišťuje síťovou komunikaci se serverem
+    \item \textbf{GameManager} -- Spravuje herní logiku a vykreslování hry
+    \item \textbf{GuiManager} -- Vykresluje UI komponenty (lobby, čekání, hra)
+    \item \textbf{Game} -- Obsahuje herní stav a pravidla Mariáše
+\end{itemize}
+
+\section{Hlavní komponenty}
+
+\subsection{Gui -- Hlavní třída aplikace}
+
+Třída \texttt{Gui} je centrálním bodem aplikace a implementuje stavový automat s následujícími stavy:
+
+\begin{description}
+    \item[LOBBY] -- Úvodní obrazovka pro zadání IP, portu a přezdívky
+    \item[CONNECTING] -- Probíhá připojování k serveru
+    \item[WAITING] -- Čekání na ostatní hráče
+    \item[PLAYING] -- Probíhá hra
+    \item[RECONNECTING] -- Probíhá znovupřipojení po výpadku
+    \item[DISCONNECTION] -- Odpojení od serveru
+    \item[HELP] -- Zobrazení nápovědy a pravidel
+\end{description}
+
+\subsubsection{Klíčové metody}
+
+\begin{itemize}
+    \item \texttt{run()} -- Hlavní herní smyčka s optimalizací vykreslování
+    \item \texttt{setup\_client\_callbacks()} -- Nastavení callbacků pro zprávy od serveru
+    \item \texttt{handle\_server\_message()} -- Zpracování příchozích zpráv
+    \item \texttt{connect\_to\_server()} -- Připojení k serveru s validací vstupů
+\end{itemize}
+
+\subsection{ClientManager -- Síťová komunikace}
+
+Třída \texttt{ClientManager} zajišťuje veškerou síťovou komunikaci s herním serverem.
+
+\subsubsection{Funkce}
+
+\begin{itemize}
+    \item Připojení k serveru přes TCP socket
+    \item Asynchronní příjem zpráv v samostatném vlákně
+    \item Automatické znovupřipojení při výpadku spojení
+    \item Heartbeat mechanismus pro detekci výpadků
+    \item Fronta zpráv pro thread-safe zpracování
+\end{itemize}
+
+\subsubsection{Reconnect mechanismus}
+
+Při ztrátě spojení se klient automaticky pokouší o znovupřipojení:
+\begin{enumerate}
+    \item Detekce výpadku (timeout při čtení nebo chyba socketu)
+    \item Spuštění reconnect vlákna
+    \item Exponenciální backoff (1s, 2s, 4s, 8s, 16s)
+    \item Maximálně 5 pokusů o znovupřipojení
+    \item Odeslání RECONNECT\_REQ zprávy po úspěšném připojení
+\end{enumerate}
+
+\subsection{Protocol -- Síťový protokol}
+
+Aplikace používá binární protokol pro komunikaci se serverem.
+
+\subsubsection{Formát zprávy}
+
+\begin{verbatim}
+[ 2B Velikost | 1B Packet ID | 1B Client Number | 1B Type | Data ]
+\end{verbatim}
+
+\begin{itemize}
+    \item \textbf{Velikost} (2B) -- Celková velikost zprávy včetně hlavičky
+    \item \textbf{Packet ID} (1B) -- Identifikátor paketu
+    \item \textbf{Client Number} (1B) -- Číslo klienta
+    \item \textbf{Type} (1B) -- Typ zprávy (viz MessageType)
+    \item \textbf{Data} -- Pole oddělená znakem '|'
+\end{itemize}
+
+\subsubsection{Typy zpráv}
+
+\textbf{Server → Client:}
+\begin{itemize}
+    \item ERROR (0) -- Chybová zpráva
+    \item WELCOME (2) -- Přivítání po připojení
+    \item STATE (3) -- Aktualizace herního stavu
+    \item GAME\_START (4) -- Začátek hry
+    \item RESULT (5) -- Výsledek hry
+    \item YOUR\_TURN (8) -- Informace o tahu hráče
+    \item WAIT\_LOBBY (9) -- Čekání v lobby
+\end{itemize}
+
+\textbf{Client → Server:}
+\begin{itemize}
+    \item CONNECT (100) -- Požadavek na připojení
+    \item RECONNECT\_REQ (101) -- Požadavek na znovupřipojení
+    \item READY\_REQ (102) -- Oznámení připravenosti
+    \item CARD (103) -- Zahraná karta
+    \item TRICK (104) -- Prázdná zpráva pro štych
+    \item BIDDING (105) -- Licitace
+    \item HEARTBEAT (107) -- Heartbeat zpráva
+\end{itemize}
+
+\subsection{GameManager -- Správa hry}
+
+Třída \texttt{GameManager} spojuje herní logiku s grafickým rozhraním.
+
+\subsubsection{Odpovědnosti}
+
+\begin{itemize}
+    \item Vykreslování karet hráče
+    \item Zobrazení zahraných karet na stole
+    \item Vykreslování licitačních tlačítek
+    \item Zpracování kliknutí na karty
+    \item Parsování herních dat ze serveru
+    \item Zobrazení výsledků hry
+\end{itemize}
+
+\subsubsection{Parsování dat}
+
+GameManager obsahuje metody pro převod dat ze serveru do objektů:
+\begin{itemize}
+    \item \texttt{card\_reader()} -- Převod stringu na objekt Card
+    \item \texttt{player\_reader()} -- Vytvoření objektu Player z dat
+    \item \texttt{state\_reader()} -- Aktualizace herního stavu
+    \item \texttt{game\_start\_reader()} -- Inicializace nové hry
+\end{itemize}
+
+\subsection{Game -- Herní logika}
+
+Třída \texttt{Game} reprezentuje stav hry Mariáš.
+
+\subsubsection{Herní stavy}
+
+\begin{description}
+    \item[LICITACE\_TRUMF] -- Licitace trumfové barvy
+    \item[LICITACE\_TALON] -- Licitace talonu
+    \item[LICITACE\_HRA] -- Licitace typu hry
+    \item[LICITACE\_DOBRY\_SPATNY] -- Licitace dobrý/špatný
+    \item[LICITACE\_BETL\_DURCH] -- Licitace betl/durch
+    \item[HRA] -- Probíhá hra
+    \item[END] -- Konec hry
+\end{description}
+
+\subsubsection{Atributy}
+
+\begin{itemize}
+    \item \texttt{players} -- Seznam hráčů
+    \item \texttt{state} -- Aktuální stav hry
+    \item \texttt{played\_cards} -- Karty zahrané ve štýchu
+    \item \texttt{active\_player} -- Zda je tento klient na tahu
+    \item \texttt{licitator} -- Hráč, který vyhrál licitaci
+    \item \texttt{trumph} -- Trumfová barva
+    \item \texttt{mode} -- Herní mód (HRA, BETL, DURCH)
+\end{itemize}
+
+\subsection{Card -- Reprezentace karty}
+
+Třída \texttt{Card} reprezentuje jednu hrací kartu.
+
+\subsubsection{Vlastnosti karty}
+
+\begin{itemize}
+    \item \textbf{Hodnota (rank)} -- A, K, Q, J, X (10), IX (9), VIII (8), VII (7)
+    \item \textbf{Barva (suit)} -- Srdce (♥), Kule (♦), Žaludy (♣), Listy (♠)
+\end{itemize}
+
+\subsubsection{Metody}
+
+\begin{itemize}
+    \item \texttt{get\_image()} -- Vrátí pygame Surface s obrázkem karty
+    \item \texttt{get\_value(mode)} -- Vrátí hodnotu karty podle herního módu
+    \item \texttt{\_\_eq\_\_()} -- Porovnání dvou karet
+\end{itemize}
+
+\subsection{Player -- Reprezentace hráče}
+
+Třída \texttt{Player} reprezentuje jednoho hráče ve hře.
+
+\subsubsection{Atributy}
+
+\begin{itemize}
+    \item \texttt{number} -- Číslo hráče (0-2)
+    \item \texttt{nickname} -- Přezdívka hráče
+    \item \texttt{hand} -- Ruka hráče (objekt Hand)
+    \item \texttt{status} -- Stav hráče
+\end{itemize}
+
+\subsubsection{Třída Hand}
+
+Třída \texttt{Hand} spravuje karty v ruce hráče:
+\begin{itemize}
+    \item \texttt{sort(mode)} -- Seřadí karty podle barvy a hodnoty
+    \item \texttt{find\_card\_in\_hand()} -- Najde kartu v ruce
+    \item \texttt{add\_card()} -- Přidá kartu do ruky
+    \item \texttt{remove\_card()} -- Odebere kartu z ruky
+\end{itemize}
+
+\subsection{GuiManager -- Vykreslování UI}
+
+Třída \texttt{GuiManager} zajišťuje vykreslování všech UI komponent.
+
+\subsubsection{Obrazovky}
+
+\begin{itemize}
+    \item \texttt{draw\_lobby()} -- Lobby s input fieldy
+    \item \texttt{draw\_connecting()} -- Obrazovka připojování
+    \item \texttt{draw\_waiting()} -- Čekání na hráče s progress barem
+    \item \texttt{draw\_reconnecting()} -- Reconnecting s animací
+    \item \texttt{draw\_help()} -- Nápověda s pravidly hry
+\end{itemize}
+
+\subsubsection{UI komponenty}
+
+GuiManager používá následující komponenty z modulu \texttt{Obstacles}:
+\begin{itemize}
+    \item \texttt{InputBox} -- Textové vstupní pole
+    \item \texttt{Button} -- Klikací tlačítko
+    \item \texttt{HelpButton} -- Tlačítko nápovědy
+\end{itemize}
+
+\section{Tok dat a komunikace}
+
+\subsection{Připojení k serveru}
+
+\begin{enumerate}
+    \item Uživatel zadá IP, port a přezdívku v lobby
+    \item Validace vstupů (InputValidator)
+    \item Gui volá \texttt{connect\_to\_server()}
+    \item ClientManager vytvoří TCP socket a připojí se
+    \item Odeslání CONNECT zprávy s přezdívkou
+    \item Server odpoví WELCOME zprávou s číslem klienta
+    \item Přechod do stavu WAITING
+\end{enumerate}
+
+\subsection{Herní smyčka}
+
+\begin{enumerate}
+    \item Server odešle GAME\_START zprávu
+    \item GameManager inicializuje hru a hráče
+    \item Přechod do stavu PLAYING
+    \item Server průběžně posílá STATE zprávy s aktualizacemi
+    \item Při tahu hráče server pošle YOUR\_TURN
+    \item Hráč klikne na kartu
+    \item Odeslání CARD zprávy serveru
+    \item Server validuje tah a pošle nový STATE
+    \item Opakování dokud hra neskončí
+    \item Server pošle RESULT zprávu s výsledkem
+\end{enumerate}
+
+\subsection{Zpracování zpráv}
+
+Všechny zprávy od serveru procházejí následujícím tokem:
+
+\begin{enumerate}
+    \item ClientManager přijme data v \texttt{\_listen\_loop()}
+    \item Zpráva je vložena do thread-safe fronty
+    \item \texttt{\_process\_message\_queue()} zpracuje zprávu v hlavním vlákně
+    \item Volání příslušného callbacku v Gui
+    \item Aktualizace stavu a označení pro překreslení
+    \item Vykreslení změn v hlavní smyčce
+\end{enumerate}
+
+\section{Optimalizace a výkon}
+
+\subsection{Vykreslování}
+
+Aplikace používá optimalizované vykreslování:
+\begin{itemize}
+    \item Cachování pozadí (vytvoří se pouze jednou)
+    \item Dirty flag systém -- překreslení pouze při změně
+    \item Omezení FPS na 60 pro snížení zátěže CPU
+    \item Vykreslování pouze viditelných prvků
+\end{itemize}
+
+\subsection{Síťová komunikace}
+
+\begin{itemize}
+    \item Asynchronní příjem v samostatném vlákně
+    \item Fronta zpráv pro thread-safe zpracování
+    \item Heartbeat každých 10 sekund
+    \item Timeout 30 sekund pro detekci výpadku
+    \item Exponenciální backoff při reconnectu
+\end{itemize}
+
+\section{Validace vstupů}
+
+Třída \texttt{InputValidator} zajišťuje validaci uživatelských vstupů:
+
+\begin{itemize}
+    \item \textbf{IP adresa} -- Kontrola formátu IPv4 (regex)
+    \item \textbf{Port} -- Číslo v rozsahu 1-65535
+    \item \textbf{Přezdívka} -- Délka 1-20 znaků, alfanumerické znaky
+\end{itemize}
+
+\section{Zpracování chyb}
+
+\subsection{Síťové chyby}
+
+\begin{itemize}
+    \item Timeout při připojení -- zobrazení chyby v GUI
+    \item Ztráta spojení -- automatický reconnect
+    \item Chyba při parsování zprávy -- logování a pokračování
+    \item Neplatná zpráva od serveru -- zobrazení ERROR
+\end{itemize}
+
+\subsection{Herní chyby}
+
+\begin{itemize}
+    \item Neplatný tah -- server odpoví INVALID zprávou
+    \item Zobrazení chybové hlášky v GUI
+    \item Hráč může zkusit jiný tah
+\end{itemize}
+
+\section{Rozšiřitelnost}
+
+Aplikace je navržena s ohledem na budoucí rozšíření:
+
+\begin{itemize}
+    \item Modulární architektura -- snadné přidání nových funkcí
+    \item Oddělení logiky od prezentace
+    \item Protokol podporuje rozšíření o nové typy zpráv
+    \item GUI komponenty jsou znovupoužitelné
+\end{itemize}
+
+\subsection{Možná rozšíření}
+
+\begin{itemize}
+    \item Podpora více herních místností
+    \item Chat mezi hráči
+    \item Statistiky a historie her
+    \item Různé grafické motivy
+    \item Zvukové efekty
+    \item Podpora pro více jazyků
+\end{itemize}
+
+\section{Závěr}
+
+Klientská aplikace pro hru Mariáš je robustní a dobře strukturovaná aplikace, která poskytuje uživatelsky přívětivé rozhraní pro online hraní této tradiční karetní hry. Implementace síťového protokolu, automatického znovupřipojení a optimalizovaného vykreslování zajišťuje plynulý herní zážitek i při nestabilním připojení.
+
+Modulární architektura a čistý kód umožňují snadnou údržbu a budoucí rozšíření aplikace o nové funkce.
+
+\end{document}

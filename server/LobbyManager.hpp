@@ -1,11 +1,12 @@
 #ifndef LOBBYMANAGER_HPP
 #define LOBBYMANAGER_HPP
 
+#include <condition_variable>
 #include <memory>
-#include <vector>
 #include <mutex>
 #include <string>
-#include <condition_variable>
+#include <vector>
+
 
 // Forward deklarace
 class NetworkManager;
@@ -13,46 +14,36 @@ class ClientManager;
 class GameManager;
 
 struct Lobby {
-    int id;
-    int requiredPlayers;
-    std::unique_ptr<ClientManager> clientManager;
-    std::unique_ptr<GameManager> gameManager;
-    bool gameStarted;
+  std::unique_ptr<ClientManager> clientManager;
+  std::unique_ptr<GameManager> gameManager;
+  int id;              // ID místnosti
+  bool gameStarted;    // Příznak pro začátek hry
+  int requiredPlayers; // Počet požadovaných hráčů
 
-    Lobby(int lobbyId, int players, NetworkManager* netManager);
-    ~Lobby();
+  Lobby(int lobbyId, int players, NetworkManager *netManager);
+  ~Lobby();
 
-    int getConnectedCount() const;
-    int getActiveCount() const;
-    bool isFull() const;
-    bool canJoin() const;
+  int getConnectedCount() const; // Vrátí počet připojených hráčů v lobby
+  int getActiveCount() const;    // Vrátí počet aktivních hráčů
+  bool isFull() const;           // Zjistí zda je lobby plně obsazené
+  bool canJoin() const;          // Příznak zda se může klient připojit do lobby
 };
 
 class LobbyManager {
 private:
-    std::vector<std::unique_ptr<Lobby>> lobbies;
-    std::mutex lobbiesMutex;
-    NetworkManager* networkManager;
-    int requiredPlayers;
+  NetworkManager *networkManager;
+  int requiredPlayers;                         // Počet požadovaných hráčů
+  std::vector<std::unique_ptr<Lobby>> lobbies; // Pole místností
+  std::mutex lobbiesMutex;                     // Mutex pro přístup do místností
 
 public:
-    LobbyManager(NetworkManager* netManager, int players, int lobbyCount);
-    ~LobbyManager();
-
-    // Najde volnou místnost pro nového hráče
-    Lobby* findAvailableLobby();
-
-    // Najde místnost podle ID
-    Lobby* getLobby(int lobbyId);
-
-    // Získá statistiky všech místností
-    std::string getLobbiesStatus();
-
-    // Počet místností
-    int getLobbyCount() const { return lobbies.size(); }
-
-    // Odpojí všechny klienty ze všech místností
-    void disconnectAll();
+  LobbyManager(NetworkManager *netManager, int players, int lobbyCount);
+  ~LobbyManager();
+  Lobby *findAvailableLobby();    // Najde volnou místnost pro nového hráče
+  Lobby *getLobby(int lobbyId);   // Najde místnost podle ID
+  std::string getLobbiesStatus(); // Získá statistiky všech místností
+  int getLobbyCount() const { return lobbies.size(); } // Počet místností
+  void disconnectAll(); // Odpojí všechny klienty ze všech místností
 };
 
 #endif // LOBBYMANAGER_HPP

@@ -4,8 +4,6 @@
 #include <stdexcept>
 #include "Card.hpp"
 #include "Deck.hpp"
-
-#include <csignal>
 #include <iostream>
 #include <ostream>
 
@@ -40,7 +38,6 @@ void Deck::shuffle() {
 
 Card* Deck::dealCard() {
     if (hasNextCard()) {
-        //std::cout << "Card returned " << cards[cardIndex]->toString() << std::endl;
         return cards[cardIndex++];
     }
     std::cout << "No more cards in deck" << std::endl;
@@ -50,8 +47,3 @@ Card* Deck::dealCard() {
 bool Deck::hasNextCard() const {
     return cardIndex < cards.size();
 }
-
-/*
-const std::vector<Card>& Deck::getCards() const {
-    return cards;
-}*/

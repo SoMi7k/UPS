@@ -24,14 +24,11 @@ class MessageType(IntEnum):
     
     # Client -> Server
     CONNECT = 100
-    RECONNECT_REQ = 101
-    READY_REQ = 102
-    CARD = 103
-    TRICK = 104
-    BIDDING = 105
-    RESET = 106
-    HEARTBEAT = 107
-    OK = 108
+    CARD = 101
+    TRICK = 102
+    BIDDING = 103
+    RESET = 104
+    HEARTBEAT = 105
 
 class Protocol:
     """Binární protokol: [ 2B Velikost | 1B Packet ID | 1B Client Number | 1B Type | Data (oddělené '|') ]"""

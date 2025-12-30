@@ -10,33 +10,33 @@ class Game {
 private:
     int numPlayers;                      // Počet hráčů
     std::vector<Player*> players;        // Pole hráčů
-    Player* licitator{};                   // Aktuální licitátor
+    Player* licitator{};                 // Aktuální licitátor
     Deck deck;                           // Balíček karet
     GameLogic gameLogic;                 // Herní logika
-    std::map<int, Card> playedCards;      // Karty zahrané v aktuálním štychu
+    std::map<int, Card> playedCards;     // Karty zahrané v aktuálním štychu
     State state;                         // Aktuální stav hry
     bool higherGame;                     // Zda někdo hlásí vyšší hru
     Player* higherPlayer;                // Hráč, který hlásí vyšší hru
-    int startingPlayerIndex{};             // Index hráče, který začíná štych
-    Player* activePlayer{};                // Aktivní hráč na tahu
+    int startingPlayerIndex{};           // Index hráče, který začíná štych
+    Player* activePlayer{};              // Aktivní hráč na tahu
     CardSuits trickSuit;                 // Barva štychu (první zahraná karta)
     bool trickSuitSet;                   // Zda byla nastavena barva štychu
-    int trickWinner{};                     // Index výherce štychu
+    int trickWinner{};                   // Index výherce štychu
     bool trickWinnerSet;                 // Zda byl nastaven výherce
     bool waitingForTrickEnd;             // Čeká se na konec štychu
-    std::pair<int, int> result;              // Výsledek hry
+    std::pair<int, int> result;          // Výsledek hry
     int talon;                           // Počitadlo pro talon
 
 public:
     // Konstruktor a destruktor
     explicit Game(int numPlayers = 3);
     ~Game();
-    int stateChanged{};                    // Příznak pro změnu stavu hry
-    int gameStarted = 0;
+    int stateChanged{};                   // Příznak pro změnu stavu hry
+    int gameStarted = 0;                  // Příznak pro resetování hry
 
-    void initPlayer(int number, std::string nick);
-    void defineLicitator(int number);
-    bool isWaitingForTrickEnd() const;
+    void initPlayer(int number, std::string nick); // Vytvoří hráče
+    void defineLicitator(int number); // Definuje licitátora
+    bool isWaitingForTrickEnd() const; // Zjišťuje zda se nachází hra v prohlížení karet po štychu
 
     // Gettery
     const std::vector<Player*>& getPlayers() const;
@@ -49,11 +49,10 @@ public:
     const std::vector<Card>& getTrickCards() const;
     std::pair<int, int> getResult() const;
     GameLogic& getGameLogic();
-    void resetTrick(int playerNumber);
 
     // Hlavní herní metody
-    void dealCards();
-    void nextPlayer();
+    void dealCards(); // Rozdá karty podle pravidel Mariáše
+    void nextPlayer(); // Změní aktivního hráče
     
     // Metody pro jednotlivé stavy hry
     void gameState1(Card card);                    // LICITACE_TRUMF
@@ -63,14 +62,14 @@ public:
     void gameState5(const std::string& label);     // LICITACE_BETL_DURCH
     bool gameState6(Card card);                    // HRA
     bool gameState7(Card card);                    // BETL/DURCH
-
-    bool gameHandler(Card &card, std::string &label);
+    bool gameHandler(Card &card, std::string &label); // Přepíná jednotlivé stavy hry
     
     // Pomocné metody
-    void clearPlayedCards();
-    void chooseModeState();
-    void higher(Player* player, Mode mode);
-    std::pair<int, int> gameResult(bool* result);
+    void clearPlayedCards(); // Vymaže karty zahrané ve štychu
+    void chooseModeState(); // Nastaví jaký mód hry se bude hrát (HRA/BETL/DURCH)
+    void higher(Player* player, Mode mode); // Nastavuje mód v případě zahlášení vyšší hry
+    std::pair<int, int> gameResult(bool* result); // Zjistí výsledek hry a vrátí skóre hry
+    void resetTrick(int playerNumber); // Resetuje zahraný štych
 };
 
 #endif

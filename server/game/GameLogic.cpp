@@ -2,98 +2,78 @@
 #include <stdexcept>
 
 #include "GameLogic.hpp"
-
-// ============ Implementace třídy GameLogic ============
-
-// KONSTRUKTOR
-// V Pythonu: def __init__(self, num_players: int):
 GameLogic::GameLogic(int numPlayers) 
     : numPlayers(numPlayers), modeSet(false) {
 }
 
 // GETTERY - přístup k privátním členským proměnným
-
 std::optional<CardSuits> GameLogic::getTrumph() const {
-    return trumph;  // Vrací naši členskou proměnnou trumph
+    return trumph;
 }
 
 std::vector<Card>& GameLogic::getTalon() {
-    return talon;  // Vrací referenci na náš talon
+    return talon;
 }
 
 Mode GameLogic::getMode() const {
-    return mode;  // Vrací náš herní mód
+    return mode;
 }
 
 bool GameLogic::isModeSet() const {
-    return modeSet;  // Vrací, zda byl mód nastaven
+    return modeSet;
 }
 
 // SETTERY - nastavení privátních členských proměnných
 void GameLogic::setTrumph(std::optional<CardSuits> newTrumph) {
-    trumph = newTrumph;  // Nastavíme naši členskou proměnnou
+    trumph = newTrumph;
 }
 
 void GameLogic::setMode(Mode newMode) {
-    mode = newMode;      // Nastavíme náš herní mód
-    modeSet = true;      // Označíme, že mód je nastaven
+    mode = newMode;
+    modeSet = true;
 }
 
 // MOVE_TO_TALON - přesune kartu z ruky hráče do talonu
-// V Pythonu: def move_to_talon(self, card: Card, player: Player):
 void GameLogic::moveToTalon(Card card, Player& player) {
     player.getHand().removeCard(card);
     talon.push_back(card);
 }
 
 // MOVE_FROM_TALON - přesune všechny karty z talonu hráči
-// V Pythonu: def move_from_talon(self, player: Player):
 void GameLogic::moveFromTalon(Player& player) {
-    // Projdeme všechny karty v našem talonu
     for (const Card& card : talon) {
-        player.addCard(card);  // Přidáme kartu hráči
+        player.addCard(card);
     }
-    talon.clear();  // Vyprázdníme náš talon
+    talon.clear();
 }
 
 // FIND_TRUMPH - označí, které karty jsou trumfy
-// V Pythonu: def find_trumph(self, cards: list[Card], decision_list: list[bool]) -> list[bool]:
 std::vector<bool> GameLogic::findTrumph(const std::map<int, Card>& cards, std::vector<bool> decisionList) {
-    // cards jsou ukazatele na karty
-    // decisionList je kopie (předáno hodnotou, ne referencí)
-    
     for (size_t i = 0; i < cards.size(); i++) {
         // Porovnáme barvu karty s naší trumfovou barvou
         if (cards.at(i).getSuit() != *trumph) {
-            decisionList[i] = false;  // Není trumf
+            decisionList[i] = false;
         }
     }
     return decisionList;
 }
 
 // SAME_SUIT_CASE - najde výherce, když jsou všechny karty stejné barvy
-// V Pythonu: def same_suit_case(self, cards: list[Card]) -> int:
 int GameLogic::sameSuitCase(const std::map<int, Card>& cards) {
     int winnerIndex = 0;  // Začínáme s první kartou jako výhercem
-    
-    // Projdeme všechny ostatní karty
+
     for (size_t i = 1; i < cards.size(); i++) {
-        // Porovnáme hodnotu aktuální karty s výherní kartou
-        // cards[i] je ukazatel, takže použijeme ->
         if (cards.at(i).getValue(mode) > cards.at(winnerIndex).getValue(mode)) {
-            winnerIndex = i;  // Našli jsme lepší kartu
+            winnerIndex = i;
         }
     }
     return winnerIndex;
 }
 
-// NOT_TRUMPH_CASE - najde výherce, když nikdo nezahrál trumf
-// V Pythonu: def not_trumph_case(self, cards: list[Card], trick_suit: CardSuits) -> int:
 int GameLogic::notTrumphCase(const std::map<int, Card>& cards, CardSuits trickSuit) {
     int winnerIndex = 0;
     
     for (size_t i = 1; i < cards.size(); i++) {
-        // Karta musí být správné barvy A mít vyšší hodnotu
         if (cards.at(i).getSuit() == trickSuit &&
             cards.at(i).getValue(mode) > cards.at(winnerIndex).getValue(mode)) {
             winnerIndex = i;
@@ -103,15 +83,10 @@ int GameLogic::notTrumphCase(const std::map<int, Card>& cards, CardSuits trickSu
 }
 
 // TRICK_DECISION - vyhodnotí štych a vrátí index výherce
-// V Pythonu: def trick_decision(self, cards: list[Card], start_player_index: int) -> tuple[int, Card]:
 std::pair<int, Card> GameLogic::trickDecision(const std::map<int, Card>& cards, int startPlayerIndex) {
-    // Barva první karty určuje barvu štychu
     CardSuits trickSuit = cards.at(startPlayerIndex).getSuit();
-    
-    // Vytvoříme decision list (všechny true na začátku)
     std::vector<bool> decisionList(numPlayers, true);
-    
-    // Pokud hrajeme normální hru (HRA)
+
     if (mode == Mode::HRA) {
         decisionList = findTrumph(cards, decisionList);
         

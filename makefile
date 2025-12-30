@@ -16,13 +16,13 @@ SRCS = $(GAME_DIR)/Card.cpp \
        $(GAME_DIR)/GameLogic.cpp \
        $(GAME_DIR)/Game.cpp \
        $(SERVER_DIR)/NetworkManager.cpp \
+       $(SERVER_DIR)/LobbyManager.cpp \
        $(SERVER_DIR)/Protocol.cpp \
        $(SERVER_DIR)/ClientManager.cpp \
        $(SERVER_DIR)/GameManager.cpp \
        $(SERVER_DIR)/MessageHandler.cpp \
-       $(SERVER_DIR)/LobbyManager.cpp \
        $(SERVER_DIR)/Server.cpp \
-       $(SERVER_DIR)/main.cpp
+       $(SERVER_DIR)/Main.cpp
 
 # Object files in build directory
 OBJS = $(BUILD_DIR)/Card.o \
@@ -32,13 +32,13 @@ OBJS = $(BUILD_DIR)/Card.o \
        $(BUILD_DIR)/GameLogic.o \
        $(BUILD_DIR)/Game.o \
        $(BUILD_DIR)/NetworkManager.o \
+	   $(BUILD_DIR)/LobbyManager.o \
        $(BUILD_DIR)/Protocol.o \
        $(BUILD_DIR)/ClientManager.o \
        $(BUILD_DIR)/GameManager.o \
        $(BUILD_DIR)/MessageHandler.o \
-       $(BUILD_DIR)/LobbyManager.o \
        $(BUILD_DIR)/Server.o \
-       $(BUILD_DIR)/main.o
+       $(BUILD_DIR)/Main.o
 
 # Default target
 all: $(BUILD_DIR) $(TARGET)

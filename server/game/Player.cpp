@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <utility>
-#include <iostream>
 
 #include "Player.hpp"
 #include "Card.hpp"
@@ -12,7 +11,6 @@ void Player::removeHand() {
 }
 
 void Player::addCard(const Card& card) {
-    //std::cout << "Adding card to player " << number << ": " << card.toString() << std::endl;
     hand.addCard(card);
 }
 
@@ -22,10 +20,6 @@ void Player::addWonCard(const Card& card) {
 
 bool Player::hasCardInHand() const {
     return !hand.getCards().empty();
-}
-
-bool Player::hasWon() const {
-    return !hand.getWonCards().empty();
 }
 
 std::vector<Card> Player::pickCards(int count) {

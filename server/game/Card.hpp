@@ -57,7 +57,6 @@ public:
     
     // Gettery
     CardRanks getRank() const;
-
     CardSuits getSuit() const;
     
     // Operátory porovnání
@@ -70,7 +69,7 @@ public:
 };
 
 // Pomocné funkce pro mapování
-Card cardMapping(const std::string& inputStr);
+Card cardMapping(const std::string& inputStr); // Mapuje kartu na string
 
 // Pomocné funkce pro převod enum na string
 std::string suitToString(CardSuits suit);

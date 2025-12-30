@@ -28,14 +28,11 @@ namespace Protocol {
 
         // Client -> Server
         CONNECT = 100,
-        RECONNECT_REQ = 101,
-        READY_REQ = 102,
-        CARD = 103,
-        TRICK = 104,
-        BIDDING = 105,
-        RESET = 106,
-        HEARTBEAT = 107,
-        OK = 108
+        CARD = 101,
+        TRICK = 102,
+        BIDDING = 103,
+        RESET = 104,
+        HEARTBEAT = 105
     };
 
     // Maximální velikost zprávy (2 bajty = 65535)

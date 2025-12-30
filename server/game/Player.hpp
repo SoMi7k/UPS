@@ -18,25 +18,25 @@ private:
 
 public:
     explicit Player(int number, std::string nick);
-    void removeHand();
-    void addCard(const Card& card);
-    void addWonCard(const Card& card);
-    bool hasCardInHand() const;
-    bool hasWon() const;
+    void removeHand(); // Vymaže pole třídy Hand
+    void addCard(const Card& card); // Přidá kartu do ruky hráče
+    void addWonCard(const Card& card); // Přidá vítěznou kartu
+    bool hasCardInHand() const; // Má hráč kartu v ruce?
 
-    std::vector<Card> pickCards(int count);
-    int calculateHand(const Mode& mode);
+    std::vector<Card> pickCards(int count); // Vybere konkrétní počet karet
+    int calculateHand(const Mode& mode); // Spočítá nahrané karty
     bool checkPlayedCard(CardSuits trickSuit,
                          std::optional<CardSuits>,
                          const Card& playedCard,
                          const std::map<int, Card>& playedCards,
-                         const Mode& mode);
-    void sortHand(const Mode& mode = Mode::BETL);
+                         const Mode& mode); // Zkontroluje správný vstup
+    void sortHand(const Mode& mode = Mode::BETL); // Seřadí karty v ruce
+    std::string toString() const;
 
+    // GETTERY
     Hand& getHand();
     int getNumber();
     std::string getNick();
-    std::string toString() const;
     std::string getInvalidMove();
 };
 

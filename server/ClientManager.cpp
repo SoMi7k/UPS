@@ -6,8 +6,9 @@
 #include <sys/socket.h>
 
 ClientManager::ClientManager(int requiredPlayers, NetworkManager* networkManager)
-    : requiredPlayers(requiredPlayers), connectedPlayers(0), networkManager(networkManager) {
+    : networkManager(networkManager), requiredPlayers(requiredPlayers), connectedPlayers(0) {
     std::cout << "🔧 ClientManager vytvořen (požadováno " << requiredPlayers << " hráčů)" << std::endl;
+
     clientNumbers.resize(requiredPlayers, 0);
 }
 
@@ -262,7 +263,7 @@ void ClientManager::checkDisconnectedClients(bool running) {
                 auto elapsed = now - client->lastSeen;
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
 
-                // === PŘÍPAD 1: Klient je označen jako disconnected (čekáme na reconnect) ===
+                // Klient je označen jako disconnected (čekáme na reconnect)
                 if (client->isDisconnected) {
                     if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
                         std::cout << "⏱️ Timeout pro odpojeného hráče #" << client->playerNumber
@@ -272,15 +273,6 @@ void ClientManager::checkDisconnectedClients(bool running) {
                         std::cout << "⏳ Hráč #" << client->playerNumber
                                   << " odpojený " << seconds << "s / "
                                   << RECONNECT_TIMEOUT_SECONDS << "s" << std::endl;
-                    }
-                }
-                // === PŘÍPAD 2: Klient je connected, ale dlouho neposlal heartbeat ===
-                else if (client->connected && client->approved) {
-                    if (seconds >= HEARTBEAT_TIMEOUT_SECONDS) {
-                        std::cout << "⚠️ Hráč #" << client->playerNumber
-                                  << " neodpovídá " << seconds << "s (timeout: "
-                                  << HEARTBEAT_TIMEOUT_SECONDS << "s)" << std::endl;
-                        toDisconnect.push_back(client);
                     }
                 }
             }

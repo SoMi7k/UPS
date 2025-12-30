@@ -22,14 +22,10 @@ public:
     ~Deck() = default;
     
     // Veřejné metody
-    void shuffle();
-    Card* dealCard();
-    bool hasNextCard() const;
-    void addCard(Card* card) { cards.push_back(card); }
-    const std::vector<Card*>& getCards() const { return cards; }
-    
-    // Getter pro testování
-    //const std::vector<Card> getCards() const;
+    void shuffle(); // Zamíchá karty
+    Card* dealCard(); // Vybere jednu kartu z balíčku
+    bool hasNextCard() const; // Zjišťuje zda je v balíču karta
+    const std::vector<Card*>& getCards() const { return cards; } // Vrátí balíček karet
 };
 
 #endif

@@ -259,7 +259,7 @@ std::vector<uint8_t> NetworkManager::receiveMessage(int socket) {
         return {};  // Prázdný buffer = odpojení
     }
 
-    std::cout << "✅ Přijat packet: " << debug_print_bytes(buffer) << std::endl;
+    std::cout << "✅ Přijat packet" << std::endl;
 
     return buffer;
 }
@@ -296,25 +296,4 @@ bool NetworkManager::recvExact(int socket, uint8_t* buffer, size_t len) {
     }
 
     return true;
-}
-
-// Pomocná funkce pro konverzi std::vector<uint8_t> na debugovací string (např. "b'\x0b\x00...'")
-std::string NetworkManager::debug_print_bytes(const std::vector<uint8_t>& buffer) {
-    std::stringstream ss;
-    ss << "b'";
-
-    // Procházíme všechny byty ve vektoru
-    for (size_t i = 0; i < buffer.size(); ++i) {
-        uint8_t byte = buffer[i];
-
-        // Zkusíme tisknout čitelné ASCII znaky (pro lepší přehlednost)
-        if (byte >= 32 && byte <= 126 && byte != 39 && byte != 92) { // 39=' / 92=\
-            ss << static_cast<char>(byte);
-        } else {
-            // Tiskneme hexadecimálně \xXX
-            ss << "\\x" << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
-        }
-    }
-    ss << "'";
-    return ss.str();
 }

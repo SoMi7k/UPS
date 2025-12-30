@@ -6,41 +6,78 @@
 
 #include "Protocol.hpp"
 
+// Třída zajišťující síťovou komunikaci serveru
 class NetworkManager {
 public:
+    // Konstruktor – uloží IP adresu a port serveru
     NetworkManager(const std::string& ip, int port);
+
+    // Destruktor – uvolnění prostředků
     ~NetworkManager();
+
+    // Maximální velikost síťového paketu
     static constexpr int MAXIMUM_PACKET_SIZE = 255;
 
-    // Socket operace
+    // ===== Socket operace =====
+
+    // Inicializace serverového socketu
     bool initializeSocket();
+
+    // Přijme nové klientské připojení
     int acceptConnection();
+
+    // Uzavře konkrétní socket
     void closeSocket(int socket);
+
+    // Uzavře serverový socket
     void closeServerSocket();
 
-    // Zprávy
-    bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType, std::vector<std::string> msg);
+    // ===== Práce se zprávami =====
+
+    // Odešle zprávu klientovi podle protokolu
+    bool sendMessage(
+        int socket,
+        int clientNumber,
+        Protocol::MessageType msgType,
+        std::vector<std::string> msg
+    );
+
+    // Přijme zprávu od klienta
     std::vector<uint8_t> receiveMessage(int socket);
 
-    // Packets
+    // ===== Práce s pakety =====
+
+    // Najde paket podle ID klienta a ID paketu
     std::vector<u_int8_t> findPacketByID(int clientNumber, int packetID);
+
+    // Vrátí ID posledního paketu pro daného klienta
     int findLatestPacketID(int clientNumber);
 
-    // Gettery
+    // ===== Gettery =====
+
+    // Vrátí serverový socket
     int getServerSocket() const { return serverSocket; }
+
+    // Vrátí port serveru
     int getPort() const { return port; }
+
+    // Vrátí uložené pakety
     const std::vector<std::vector<u_int8_t>>& getPackets() const { return packets; }
+
+    // Vrátí aktuální ID paketu
     int getCurrentPacketID() const { return packetID; }
 
 private:
-    std::string bindIP;
-    int serverSocket;
-    int port;
-    int packetID;
-    std::vector<std::vector<u_int8_t>> packets;
+    std::string bindIP;                            // IP adresa serveru
+    int serverSocket;                              // Serverový socket
+    int port;                                      // Port serveru
+    int packetID;                                  // Aktuální ID paketu
+    std::vector<std::vector<u_int8_t>> packets;    // Uložené pakety
 
+    // Získá seznam lokálních IP adres
     std::vector<std::string> getLocalIPAddresses();
-    std::string debug_print_bytes(const std::vector<uint8_t>& buffer);
+
+    // Načte přesně daný počet bytů ze socketu
     bool recvExact(int socket, uint8_t* buffer, size_t len);
 };
 

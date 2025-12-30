@@ -89,9 +89,3 @@ void Hand::removeHand() {
     }
 }
 
-void Hand::showCards() {
-    for (const auto& card : cards) {
-        std::cout << "  - " << card.toString() << std::endl;
-    }
-}
-

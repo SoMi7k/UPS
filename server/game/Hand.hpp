@@ -15,20 +15,21 @@ private:
 public:
     Hand() = default;
 
-    bool checkRightInput(const std::string& cardInput);
-    void sort(const Mode& gameMode);
-    bool findCardInHand(const Card& cardInput) const;
-    bool findCardByRank(CardRanks rank, const Mode& mode) const;
-    bool findCardBySuit(CardSuits suit) const;
-    void removeCard(const Card& cardToRemove);
-    void addCard(const Card& cardToAdd);
-    void addWonCard(const Card& card);
-    void calculateHand(const Mode& mode);
-    void removeHand();
+    bool checkRightInput(const std::string& cardInput); // Zjistí zda hráč zahrál správnou kartu
+    void sort(const Mode& gameMode); // Seřadí karty podle barev a velikosti
+    bool findCardInHand(const Card& cardInput) const; // Nalezne konkrétní kartu
+    bool findCardByRank(CardRanks rank, const Mode& mode) const; // Nalezne kartu dle velikosti
+    bool findCardBySuit(CardSuits suit) const; // Nalezne kartu dle barvy
+    void removeCard(const Card& cardToRemove); // Odstraní kartu z ruky
+    void addCard(const Card& cardToAdd); // Přidá kartu do ruky
+    void addWonCard(const Card& card); // Přidá vítězné karty
+    void calculateHand(const Mode& mode); // Spočítá ruku hráče
+    void removeHand(); // Vymaže obě pole třídy Hand
+
+    // Gettery
     std::vector<Card> getCards() const { return cards; }
     const std::vector<Card>& getWonCards() const { return won_cards; }
     int getPoints() const { return points; }
-    void showCards();
 };
 
 #endif
