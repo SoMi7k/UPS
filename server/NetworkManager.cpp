@@ -55,7 +55,7 @@ bool NetworkManager::isValidMessageString(const std::string& data) {
     int delimiterCount = std::count(data.begin(), data.end(), Protocol::DELIMITER);
     if (delimiterCount < 2) {
         std::cerr << "❌ [VALIDATION] Nedostatek delimiterů: "
-                  << delimiterCount << " < 3" << std::endl;
+                  << delimiterCount << " < 2" << std::endl;
         return false;
     }
 
