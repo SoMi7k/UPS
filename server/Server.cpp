@@ -156,6 +156,12 @@ void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
     }
     std::cout << std::endl;
 
+    if (!networkManager->checkMessage(msg, client->playerNumber, requiredPlayers)) {
+        std::cerr << "⚠ Hráč #" << client->playerNumber << " poslal špatný formát zprávy" << std::endl;
+        lobby->clientManager->disconnectClient(client);
+        return;
+    }
+
     if (msg.type != Protocol::MessageType::CONNECT && msg.type != Protocol::MessageType::RECONNECT) {
         std::cerr << "⚠ Hráč #" << client->playerNumber << " poslal nesprávný msgType" << std::endl;
         networkManager->sendMessage(client->socket, client->playerNumber,

@@ -106,11 +106,10 @@ class ClientManager:
                 return False
             
             # Packet ID a client number (server je ignoruje, ale musíme je poslat)
-            packet_id = 0  # Klient nemusí sledovat packet ID
             client_number = self.number if self.number is not None else 0
             
             # Serializujeme zprávu
-            data = Protocol.serialize(packet_id, client_number, msg_type, fields)
+            data = Protocol.serialize(self.last_packet_id, client_number, msg_type, fields)
             
             print(f"📤 Odesílám: {msg_type.name} ({len(data)} bytů)")
             print(f"📤 Odeslané byty: {data}")
@@ -124,6 +123,15 @@ class ClientManager:
             print(f"❌ Chyba odeslání: {e}")
             self.connected = False
             return False
+    
+    def check_msg(self, msg: bytes, required_players: int) -> int:
+        if (msg[2] < -1 and msg[2] > required_players - 1):
+            return 0
+
+        if (msg[3] < -1 or msg[3] > 19):
+            return 0
+
+        return 1
     
     def _send_exactly(self, data: bytes):
         """Pošle všechna data (ošetření částečného send)."""
@@ -184,7 +192,12 @@ class ClientManager:
                     print(f"❌ Neplatná velikost zprávy: {msg_size}")
                     break
                 
-                # 4. Načteme zbytek zprávy (payload)
+                # 4. Validace zprávy
+                #if not self.check_msg(header ):
+                #    print("❌ Neplatná zpráva")
+                #    break
+                
+                # 5. Načteme zbytek zprávy (payload)
                 payload_size = msg_size - Protocol.HEADER_SIZE
                 full_message = header
                 
@@ -194,7 +207,7 @@ class ClientManager:
                         break
                     full_message += payload
                 
-                # 5. Přidáme do fronty
+                # 6. Přidáme do fronty
                 self.msg_queue.put(full_message)
                 print(f"📥 Zpráva přidána do fronty (velikost: {self.msg_queue.qsize()})")
                 

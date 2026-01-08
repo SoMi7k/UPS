@@ -247,8 +247,9 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
 }
 
 void ClientManager::checkDisconnectedClients(bool running) {
+    int delay = 5; // Jak často budeme kontrolovat výpadky (sekundy)
     while (running) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));  // 🆕 Častější kontrola
+        std::this_thread::sleep_for(std::chrono::seconds(delay));  // 🆕 Častější kontrola
 
         std::vector<ClientInfo*> toRemove;
         std::vector<ClientInfo*> toDisconnect;
@@ -263,7 +264,7 @@ void ClientManager::checkDisconnectedClients(bool running) {
                 auto elapsed = now - client->lastSeen;
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
 
-                // Klient je označen jako disconnected (čekáme na reconnect)
+                // === PŘÍPAD 1: Klient je označen jako disconnected (čekáme na reconnect) ===
                 if (client->isDisconnected) {
                     if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
                         std::cout << "⏱️ Timeout pro odpojeného hráče #" << client->playerNumber
@@ -273,6 +274,15 @@ void ClientManager::checkDisconnectedClients(bool running) {
                         std::cout << "⏳ Hráč #" << client->playerNumber
                                   << " odpojený " << seconds << "s / "
                                   << RECONNECT_TIMEOUT_SECONDS << "s" << std::endl;
+                    }
+                }
+                // === PŘÍPAD 2: Klient je connected, ale dlouho neposlal heartbeat ===
+                else if (client->connected && client->approved) {
+                    if (seconds >= HEARTBEAT_TIMEOUT_SECONDS) {
+                        std::cout << "⚠️ Hráč #" << client->playerNumber
+                                  << " neodpovídá " << seconds << "s (timeout: "
+                                  << HEARTBEAT_TIMEOUT_SECONDS << "s)" << std::endl;
+                        toDisconnect.push_back(client);
                     }
                 }
             }

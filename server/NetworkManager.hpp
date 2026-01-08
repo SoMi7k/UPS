@@ -53,6 +53,9 @@ public:
     // Vrátí ID posledního paketu pro daného klienta
     int findLatestPacketID(int clientNumber);
 
+    // Zkontroluje hlavičku zprávy
+    int checkMessage(Protocol::Message msg, int clientNumber, int required_players);
+
     // ===== Gettery =====
 
     // Vrátí serverový socket

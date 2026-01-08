@@ -15,7 +15,7 @@
 
 // 🆕 Konstruktor s IP adresou
 NetworkManager::NetworkManager(const std::string& ip, int port)
-    : bindIP(ip), serverSocket(-1), port(port), packetID(0) {
+    : bindIP(ip), serverSocket(-1), port(port), packetID(1) {
 
     packets.resize(MAXIMUM_PACKET_SIZE, {});
     std::cout << "🔧 NetworkManager inicializován" << std::endl;
@@ -262,6 +262,29 @@ std::vector<uint8_t> NetworkManager::receiveMessage(int socket) {
     std::cout << "✅ Přijat packet" << std::endl;
 
     return buffer;
+}
+
+int NetworkManager::checkMessage(Protocol::Message msg, int clientNumber, int required_players) {
+    if (msg.clientID > required_players - 1) {
+        std::cout << msg.clientID << " : " << required_players << std::endl;
+        return 0;
+    }
+
+    if (msg.packetID) {
+        int lastpacketID = findLatestPacketID(clientNumber);
+
+        if (lastpacketID == -1) {
+            std::cout << msg.packetID << " : " << lastpacketID << std::endl;
+            return 0;
+        }
+    }
+
+    if (static_cast<int>(msg.type) > 19) {
+        std::cout << static_cast<int>(msg.type) << " : " << 19 << std::endl;
+        return 0;
+    }
+
+    return 1;
 }
 
 bool NetworkManager::recvExact(int socket, uint8_t* buffer, size_t len) {

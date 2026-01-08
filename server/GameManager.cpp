@@ -3,7 +3,6 @@
 #include "NetworkManager.hpp"
 #include "Protocol.hpp"
 #include <iostream>
-#include <random>
 
 GameManager::GameManager(int requiredPlayers, NetworkManager* networkManager, ClientManager* clientManager)
     : networkManager(networkManager), clientManager(clientManager), requiredPlayers(requiredPlayers) {
@@ -42,16 +41,14 @@ void GameManager::startGame() {
 
     // ===== KROK 2: Čekání 5 sekund =====
     std::cout << "\n⏳ Čekám 5 sekund před rozdáním karet..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::this_thread::sleep_for(std::chrono::seconds(WAITING_TIME));
     std::cout << "✓ Čekání dokončeno" << std::endl;
 
     // ===== KROK 3 Inicializace hry a rozdání karet =====
     {
         std::cout << "\n🃏 Rozdávám karty hráčům..." << std::endl;
         std::lock_guard<std::mutex> lock(gameMutex);
-        //std::mt19937 generator(static_cast<unsigned int>(std::time(0)));
-        //std::uniform_int_distribution<int> distribution(0, requiredPlayers - 1);
-        game->defineLicitator(0);//distribution(generator));
+        game->defineLicitator(0);
         game->dealCards();
         std::cout << "✓ Karty rozdány" << std::endl;
     }

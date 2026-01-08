@@ -63,6 +63,7 @@ public:
 private:
     NetworkManager* networkManager;
     static constexpr int RECONNECT_TIMEOUT_SECONDS = 60;
+    static constexpr int HEARTBEAT_TIMEOUT_SECONDS = 15;
     std::vector<ClientInfo*> clients;   // Pole připojených klientů
     std::mutex clientsMutex;            // Zámek pro přístup ke správě klientů
     int requiredPlayers;                // Pož. počet hráčů

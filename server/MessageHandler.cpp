@@ -70,7 +70,7 @@ void MessageHandler::processClientMessage(ClientInfo* client, std::vector<uint8_
     // ===== UNKNOWN =====
     else {
         std::cerr << "⚠ Neznámý typ zprávy: " << static_cast<int>(msgType) << std::endl;
-        sendError(client, Protocol::MessageType::ERROR, "Neznámý typ zprávy: Odpojuji...\n");
+        sendError(client, Protocol::MessageType::DISCONNECT, "Neznámý typ zprávy: Odpojuji...\n");
         clientManager->disconnectClient(client);
     }
 }

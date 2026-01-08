@@ -6,7 +6,6 @@ from typing import List
 # PROTOCOL - Definice protokolu (stejné jako v C++)
 # ============================================================
 class MessageType(IntEnum):
-    # Server -> Client
     ERROR = 0
     STATUS = 1
     WELCOME = 2
@@ -21,14 +20,12 @@ class MessageType(IntEnum):
     INVALID = 11
     READY = 12
     RECONNECT = 13
-    
-    # Client -> Server
-    CONNECT = 100
-    CARD = 101
-    TRICK = 102
-    BIDDING = 103
-    RESET = 104
-    HEARTBEAT = 105
+    CONNECT = 14
+    CARD = 15
+    TRICK = 16
+    BIDDING = 17
+    RESET = 18
+    HEARTBEAT = 19
 
 class Protocol:
     """Binární protokol: [ 2B Velikost | 1B Packet ID | 1B Client Number | 1B Type | Data (oddělené '|') ]"""

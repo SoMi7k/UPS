@@ -23,18 +23,15 @@ Viz soubor [LICENSE](LICENSE).
 
 ### Struktura práce
 ```bash
-|- docs 
-|-- server    # Všechny soubory pro běh serveru
-  |- makefile # Dokument pro automatickou kompilaci programu 
-  |- game     # Soubory pro logiku hry
-  |- builtor  # Simulace běhu serveru
-  ...
-|-|
-|-- client    # Všechny soubory pro běh klienta
-  |- main.py  # Soubor pro spuštění klienta
-  |- src      # Logika klienta
-  |- images   # Obrázky karet
-|-|
+.
+├── docs/
+├── server/          # Všechny soubory pro běh serveru
+│   ├── makefile     # Dokument pro automatickou kompilaci programu
+│   └── game/        # Soubory pro logiku hry
+└── client/          # Všechny soubory pro běh klienta
+    ├── main.py      # Soubor pro spuštění klienta
+    ├── src/         # Logika klienta
+    └── images/      # Obrázky karet
 ```
 
 ### Spuštění

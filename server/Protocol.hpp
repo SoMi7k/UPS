@@ -10,7 +10,6 @@ namespace Protocol {
 
     // Typy zpráv (1 byte)
     enum class MessageType : uint8_t {
-        // Server -> Client
         ERROR = 0,
         STATUS = 1,
         WELCOME = 2,
@@ -25,14 +24,12 @@ namespace Protocol {
         INVALID = 11,
         READY = 12,
         RECONNECT = 13,
-
-        // Client -> Server
-        CONNECT = 100,
-        CARD = 101,
-        TRICK = 102,
-        BIDDING = 103,
-        RESET = 104,
-        HEARTBEAT = 105
+        CONNECT = 14,
+        CARD = 15,
+        TRICK = 16,
+        BIDDING = 17,
+        RESET = 18,
+        HEARTBEAT = 19
     };
 
     // Maximální velikost zprávy (2 bajty = 65535)
