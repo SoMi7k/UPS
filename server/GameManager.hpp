@@ -35,7 +35,7 @@ public:
     void handleCard(Card card);
 
 private:
-    static constexpr int WAITING_TIME = 5;  // Doba čekání před začátkem hry
+    static constexpr int WAITING_TIME = 3;  // Doba čekání před začátkem hry
     std::unique_ptr<NetworkManager> networkManager;
     std::unique_ptr<ClientManager> clientManager;
     int requiredPlayers;             // Požadovaný počet hráčů

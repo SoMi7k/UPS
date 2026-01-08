@@ -9,6 +9,7 @@
 // Třída zajišťující síťovou komunikaci serveru
 class NetworkManager {
 public:
+
     // Konstruktor – uloží IP adresu a port serveru
     NetworkManager(const std::string& ip, int port);
 
@@ -17,6 +18,26 @@ public:
 
     // Maximální velikost síťového paketu
     static constexpr int MAXIMUM_PACKET_SIZE = 255;
+
+    enum class ValidationResult {
+        VALID = 0,
+        INVALID_CLIENT_ID = 1,
+        INVALID_PACKET_ID = 2,
+        INVALID_MESSAGE_TYPE = 3,
+        INVALID_PACKET_SEQUENCE = 4,
+        MALFORMED_DATA = 5,
+        INVALID_FIELD_COUNT = 6,
+        INVALID_CHARACTERS = 7,
+        MESSAGE_TOO_LARGE = 8
+    };
+
+    // Validace zprávy s důvodem selhání
+    ValidationResult validateMessage(const Protocol::Message& msg,
+                                    int clientNumber,
+                                    int requiredPlayers);
+
+    // Kontrola stringu před deserializací
+    bool isValidMessageString(const std::string& data);
 
     // ===== Socket operace =====
 
@@ -35,20 +56,16 @@ public:
     // ===== Práce se zprávami =====
 
     // Odešle zprávu klientovi podle protokolu
-    bool sendMessage(
-        int socket,
-        int clientNumber,
-        Protocol::MessageType msgType,
-        std::vector<std::string> msg
-    );
+    bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType,
+                    std::vector<std::string> msg);
 
     // Přijme zprávu od klienta
-    std::vector<uint8_t> receiveMessage(int socket);
+    std::string receiveMessage(int socket);
 
     // ===== Práce s pakety =====
 
     // Najde paket podle ID klienta a ID paketu
-    std::vector<u_int8_t> findPacketByID(int clientNumber, int packetID);
+    std::string findPacketByID(int clientNumber, int packetID);
 
     // Vrátí ID posledního paketu pro daného klienta
     int findLatestPacketID(int clientNumber);
@@ -65,7 +82,7 @@ public:
     int getPort() const { return port; }
 
     // Vrátí uložené pakety
-    const std::vector<std::vector<u_int8_t>>& getPackets() const { return packets; }
+    const std::vector<std::string>& getPackets() const { return packets; }
 
     // Vrátí aktuální ID paketu
     int getCurrentPacketID() const { return packetID; }
@@ -75,13 +92,13 @@ private:
     int serverSocket;                              // Serverový socket
     int port;                                      // Port serveru
     int packetID;                                  // Aktuální ID paketu
-    std::vector<std::vector<u_int8_t>> packets;    // Uložené pakety
+    std::vector<std::string> packets;    // Uložené pakety
 
     // Získá seznam lokálních IP adres
     std::vector<std::string> getLocalIPAddresses();
-
-    // Načte přesně daný počet bytů ze socketu
-    bool recvExact(int socket, uint8_t* buffer, size_t len);
+    // Pomocné validační funkce
+    bool isValidUTF8(const std::string& str);
+    bool containsSuspiciousPatterns(const std::string& str);
 };
 
 #endif // NETWORK_MANAGER_HPP

@@ -27,63 +27,91 @@ class MessageType(IntEnum):
     RESET = 18
     HEARTBEAT = 19
 
+DELIMITER = '|'
+TERMINATOR = '\n'
+
 class Protocol:
     """Binární protokol: [ 2B Velikost | 1B Packet ID | 1B Client Number | 1B Type | Data (oddělené '|') ]"""
     
-    HEADER_SIZE = 5  # 2B size + 1B packetID + 1B clientNum + 1B type
-    MAX_MESSAGE_SIZE = 65535
+    MAX_MESSAGE_SIZE = 256
+
+    @staticmethod
+    def serialize(packet_id: int, client_id: int, msg_type: MessageType, fields: list[str]) -> bytes:
+        '''Serializuje zprávu do textového formátu.'''
+        # Format: SIZE|PACKET|CLIENT|TYPE|FIELD1|FIELD2|...\n
+        parts = [
+            str(packet_id),
+            str(client_id),
+            str(msg_type.value)
+        ] + fields
+        
+        content = DELIMITER.join(parts) + TERMINATOR
+        size = len(content) + len(str(len(content))) + 1  # +1 pro delimiter za SIZE
+        
+        message = f"{size}{DELIMITER}{content}"
+        return message.encode('utf-8')
     
     @staticmethod
-    def serialize(packet_id: int, client_number: int, msg_type: MessageType, fields: List[str]) -> bytes:
-        """Serializuje zprávu do binárního formátu."""
-        
-        # 1. Spojíme pole s delimiterem '|'
-        payload = '|'.join(fields).encode('utf-8')
-        
-        # 2. Vypočítáme celkovou velikost
-        total_size = Protocol.HEADER_SIZE + len(payload)
-        
-        if total_size > Protocol.MAX_MESSAGE_SIZE:
-            raise ValueError(f"Zpráva příliš velká: {total_size} bytů")
-        
-        # 3. Sestavíme header
-        # Format: '<H' = little-endian unsigned short (2B)
-        #         'B'  = unsigned byte (1B)
-        header = struct.pack('<HBBB', 
-                                total_size,         # 2B: Velikost zprávy
-                                packet_id,          # 1B: Packet ID
-                                client_number,      # 1B: Client number
-                                int(msg_type))      # 1B: Message type
-        
-        # 4. Spojíme header + payload
-        return header + payload
+    def deserialize(text: str):
+        if not text:
+            raise ValueError("Prázdná zpráva")
+
+        text = text.strip()
+
+        parts = text.split(DELIMITER)
+
+        if len(parts) < 4:
+            raise ValueError(f"Neplatná zpráva: {text}")
+
+        size = int(parts[0])
+        packet_id = int(parts[1])
+        client_id = int(parts[2])
+        msg_type = MessageType(int(parts[3]))
+        fields = parts[4:] if len(parts) > 4 else []
+
+        return packet_id, client_id, msg_type, fields
     
     @staticmethod
-    def deserialize(data: bytes) -> tuple:
-        """Deserializuje binární zprávu.
-        
-        Returns:
-            tuple: (size, packet_id, client_number, msg_type, fields)
-        """
-        if len(data) < Protocol.HEADER_SIZE:
-            raise ValueError(f"Příliš malá zpráva: {len(data)} bytů")
-        
-        # 1. Parsujeme header
-        size, packet_id, client_number, msg_type_raw = struct.unpack('<HBBB', data[:Protocol.HEADER_SIZE])
-        
-        # 2. Validace
-        if size != len(data):
-            raise ValueError(f"Nekonzistentní velikost: header={size}, skutečnost={len(data)}")
-        
-        msg_type = MessageType(msg_type_raw)
-        
-        # 3. Parsujeme payload (pokud existuje)
-        fields = []
-        if len(data) > Protocol.HEADER_SIZE:
-            payload = data[Protocol.HEADER_SIZE:].decode('utf-8')
-            if payload:
-                fields = payload.split('|')
-        
-        return size, packet_id, client_number, msg_type, fields
-    
-    
+    def is_valid_message_string(data: str) -> bool:
+        if not data:
+            print("Case 1")
+            return False
+
+        if len(data) > Protocol.MAX_MESSAGE_SIZE:
+            print("Case 2")
+            return False
+
+        if not data.endswith('\n'):
+            print("Case 3")
+            return False
+
+        if data.count(DELIMITER) < 2:
+            print("Case 4")
+            return False
+
+        for c in data:
+            if ord(c) == 0:
+                print("Case 5")
+                return False
+            if ord(c) < 32 and c not in ['\n', '\r']:
+                print("Case 6")
+                return False
+
+        size_part = data.split(DELIMITER, 1)[0]
+        if not size_part.isdigit():
+            print("Case 6")
+            return False
+
+        # Spam protection – 100+ stejných znaků
+        last = None
+        count = 0
+        for c in data:
+            if c == last:
+                count += 1
+                if count > 100:
+                    return False
+            else:
+                last = c
+                count = 1
+
+        return True

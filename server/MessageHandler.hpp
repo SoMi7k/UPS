@@ -12,7 +12,7 @@ public:
     MessageHandler(NetworkManager* networkManager, ClientManager* clientManager, GameManager* gameManager);
 
     // Zpracování zpráv
-    void processClientMessage(ClientInfo* client, std::vector<uint8_t> recvMsg);
+    void processClientMessage(ClientInfo* client, const Protocol::Message& msg);
 
 private:
     NetworkManager* networkManager;

@@ -27,6 +27,194 @@ NetworkManager::~NetworkManager() {
     closeServerSocket();
 }
 
+#include <algorithm>
+#include <cctype>
+#include <regex>
+
+bool NetworkManager::isValidMessageString(const std::string& data) {
+    // === 1. Kontrola prázdné zprávy ===
+    if (data.empty()) {
+        std::cerr << "❌ [VALIDATION] Prázdná zpráva" << std::endl;
+        return false;
+    }
+
+    // === 2. Kontrola délky ===
+    if (data.length() > Protocol::MAX_MESSAGE_SIZE) {
+        std::cerr << "❌ [VALIDATION] Zpráva příliš dlouhá: "
+                  << data.length() << " > " << Protocol::MAX_MESSAGE_SIZE << std::endl;
+        return false;
+    }
+
+    // === 3. Kontrola terminátoru ===
+    if (data.back() != Protocol::TERMINATOR) {
+        std::cerr << "❌ [VALIDATION] Chybí terminátor \\n" << std::endl;
+        return false;
+    }
+
+    // === 4. Počet delimiterů (minimálně 3: SIZE|PACKET|CLIENT|TYPE) ===
+    int delimiterCount = std::count(data.begin(), data.end(), Protocol::DELIMITER);
+    if (delimiterCount < 3) {
+        std::cerr << "❌ [VALIDATION] Nedostatek delimiterů: "
+                  << delimiterCount << " < 3" << std::endl;
+        return false;
+    }
+
+    // === 5. Kontrola neplatných znaků (null bytes, kontrolní znaky kromě \n) ===
+    for (size_t i = 0; i < data.length(); i++) {
+        unsigned char c = data[i];
+
+        // Null byte
+        if (c == 0) {
+            std::cerr << "❌ [VALIDATION] Null byte na pozici " << i << std::endl;
+            return false;
+        }
+
+        // Kontrolní znaky (kromě \n a \r)
+        if (c < 32 && c != '\n' && c != '\r') {
+            std::cerr << "❌ [VALIDATION] Neplatný kontrolní znak: "
+                      << static_cast<int>(c) << " na pozici " << i << std::endl;
+            return false;
+        }
+    }
+
+    // === 6. Kontrola parsovatelnosti první části (SIZE) ===
+    size_t firstDelim = data.find(Protocol::DELIMITER);
+    if (firstDelim == std::string::npos) {
+        return false;
+    }
+
+    std::string sizeStr = data.substr(0, firstDelim);
+
+    // SIZE musí být číslo
+    if (sizeStr.empty() || !std::all_of(sizeStr.begin(), sizeStr.end(), ::isdigit)) {
+        std::cerr << "❌ [VALIDATION] SIZE není číslo: '" << sizeStr << "'" << std::endl;
+        return false;
+    }
+
+    // === 7. Kontrola podezřelých vzorů (opakující se znaky = spam) ===
+    if (containsSuspiciousPatterns(data)) {
+        std::cerr << "❌ [VALIDATION] Detekován podezřelý vzor (spam)" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool NetworkManager::containsSuspiciousPatterns(const std::string& str) {
+    // Kontrola opakujících se znaků (100+ stejných znaků za sebou = spam)
+    int consecutiveCount = 1;
+    char lastChar = 0;
+
+    for (char c : str) {
+        if (c == lastChar) {
+            consecutiveCount++;
+            if (consecutiveCount > 100) {
+                std::cout << "⚠️ [VALIDATION] Detekováno " << consecutiveCount
+                          << " opakujících se znaků" << std::endl;
+                return true;  // Podezřelé
+            }
+        } else {
+            consecutiveCount = 1;
+            lastChar = c;
+        }
+    }
+
+    return false;
+}
+
+NetworkManager::ValidationResult NetworkManager::validateMessage(
+    const Protocol::Message& msg,
+    int clientNumber,
+    int requiredPlayers) {
+
+    std::cout << "🔍 [VALIDATION] Validuji zprávu od klienta #" << clientNumber << std::endl;
+    std::cout << "   - PacketID: " << static_cast<int>(msg.packetID) << std::endl;
+    std::cout << "   - ClientID: " << static_cast<int>(msg.clientID) << std::endl;
+    std::cout << "   - Type: " << static_cast<int>(msg.type) << std::endl;
+    std::cout << "   - Fields: " << msg.fields.size() << std::endl;
+
+    // === 1. KONTROLA CLIENT ID ===
+    // ClientID musí odpovídat očekávanému číslu klienta
+    if (msg.clientID != clientNumber) {
+        std::cerr << "❌ [VALIDATION] ClientID nesouhlasí: "
+                  << static_cast<int>(msg.clientID) << " != " << clientNumber << std::endl;
+        return ValidationResult::INVALID_CLIENT_ID;
+    }
+
+    // ClientID musí být v platném rozsahu
+    if (msg.clientID >= requiredPlayers) {
+        std::cerr << "❌ [VALIDATION] ClientID mimo rozsah: "
+                  << static_cast<int>(msg.clientID) << " >= " << requiredPlayers << std::endl;
+        return ValidationResult::INVALID_CLIENT_ID;
+    }
+
+    // === 2. KONTROLA MESSAGE TYPE ===
+    // Type musí být validní (0-19)
+    int typeValue = static_cast<int>(msg.type);
+    if (typeValue < 0 || typeValue > 19) {
+        std::cerr << "❌ [VALIDATION] Neplatný typ zprávy: " << typeValue << std::endl;
+        return ValidationResult::INVALID_MESSAGE_TYPE;
+    }
+
+    // === 3. KONTROLA PACKET ID SEKVENCE ===
+    // PacketID by měl postupovat logicky (s tolerancí pro wraparound)
+    if (clientNumber >= 0) {
+        int lastPacketID = findLatestPacketID(clientNumber);
+
+        if (lastPacketID != -1) {
+            // Spočítej očekávané ID (s wraparoundem)
+            int expectedID = (lastPacketID + 1) % MAXIMUM_PACKET_SIZE;
+
+            // Toleruj malé rozdíly (kvůli retransmisi nebo ztrátě packetu)
+            int diff = std::abs(msg.packetID - expectedID);
+
+            // Pokud je rozdíl větší než 10, je to podezřelé
+            if (diff > 10 && diff < (MAXIMUM_PACKET_SIZE - 10)) {
+                std::cerr << "⚠️ [VALIDATION] Podezřelá sekvence packetID: "
+                          << static_cast<int>(msg.packetID) << " (očekáváno ~"
+                          << expectedID << ")" << std::endl;
+                // Toto není fatální chyba, ale logujeme ji
+            }
+        }
+    }
+
+    // === 5. KONTROLA OBSAHU FIELDS ===
+    for (size_t i = 0; i < msg.fields.size(); i++) {
+        const std::string& field = msg.fields[i];
+
+        // Field nesmí být příliš dlouhý
+        if (field.length() > 1000) {
+            std::cerr << "❌ [VALIDATION] Field " << i << " je příliš dlouhý: "
+                      << field.length() << " znaků" << std::endl;
+            return ValidationResult::MALFORMED_DATA;
+        }
+
+        // Field nesmí obsahovat null bytes
+        if (field.find('\0') != std::string::npos) {
+            std::cerr << "❌ [VALIDATION] Field " << i << " obsahuje null byte" << std::endl;
+            return ValidationResult::INVALID_CHARACTERS;
+        }
+
+        // Field nesmí obsahovat delimiter nebo terminator
+        if (field.find(Protocol::DELIMITER) != std::string::npos ||
+            field.find(Protocol::TERMINATOR) != std::string::npos) {
+            std::cerr << "❌ [VALIDATION] Field " << i
+                      << " obsahuje zakázané znaky (| nebo \\n)" << std::endl;
+            return ValidationResult::INVALID_CHARACTERS;
+        }
+    }
+
+    // === 6. KONTROLA CELKOVÉ VELIKOSTI ===
+    if (msg.size > Protocol::MAX_MESSAGE_SIZE) {
+        std::cerr << "❌ [VALIDATION] Zpráva příliš velká: "
+                  << msg.size << " > " << Protocol::MAX_MESSAGE_SIZE << std::endl;
+        return ValidationResult::MESSAGE_TOO_LARGE;
+    }
+
+    std::cout << "✅ [VALIDATION] Zpráva validní" << std::endl;
+    return ValidationResult::VALID;
+}
+
 std::vector<std::string> NetworkManager::getLocalIPAddresses() {
     std::vector<std::string> addresses;
     struct ifaddrs* ifAddrStruct = nullptr;
@@ -146,7 +334,7 @@ void NetworkManager::closeServerSocket() {
     }
 }
 
-std::vector<u_int8_t> NetworkManager::findPacketByID(int clientNumber, int packetID) {
+std::string NetworkManager::findPacketByID(int clientNumber, int packetID) {
     // Kontrola rozsahu
     if (packetID < 0 || packetID >= MAXIMUM_PACKET_SIZE) {
         return {};
@@ -193,8 +381,10 @@ int NetworkManager::findLatestPacketID(int clientNumber) {
     return latestID;
 }
 
-bool NetworkManager::sendMessage(int socket, int clientNumber, Protocol::MessageType msgType, std::vector<std::string> msg) {
-    // Převedeme na Protocol::Message
+bool NetworkManager::sendMessage(int socket, int clientNumber,
+                                Protocol::MessageType msgType,
+                                std::vector<std::string> msg) {
+    // Vytvoříme zprávu
     Protocol::Message message = Protocol::createMessage(
         static_cast<uint8_t>(packetID),
         static_cast<uint8_t>(clientNumber),
@@ -202,66 +392,87 @@ bool NetworkManager::sendMessage(int socket, int clientNumber, Protocol::Message
         msg
     );
 
-    // Serializace do binárního bufferu
-    std::vector<uint8_t> buffer = Protocol::serialize(message);
+    // Serializujeme do textového formátu
+    std::string textData = Protocol::serialize(message);
 
-    // Uložíme packet před odesláním
+    // Uložíme do historie (pro reconnect)
     if (clientNumber != -1) {
-        packets[packetID] = buffer;
+        packets[packetID] = textData;  // 🆕 Uložíme jako string
     }
 
-    std::cout << "📤 Posílám packet ID:" << packetID << " klientovi #" << clientNumber
-        << " (type: " << static_cast<int>(message.type) << ")" << std::endl;
+    std::cout << "📤 Posílám packet ID:" << packetID
+              << " klientovi #" << clientNumber
+              << " (type: " << static_cast<int>(message.type) << ")" << std::endl;
+    std::cout << "   Data: " << textData << std::endl;
 
-    // Inkrementace ID s wraparoundem
+    // Inkrementace ID
     packetID = (packetID + 1) % MAXIMUM_PACKET_SIZE;
 
-    // Odeslání binárních dat
-    ssize_t sent = send(socket, buffer.data(), buffer.size(), MSG_NOSIGNAL);
+    // Odeslání textových dat
+    ssize_t sent = send(socket, textData.c_str(), textData.length(), MSG_NOSIGNAL);
 
     if (sent <= 0) {
-        std::cerr << "❌ Send selhal, socket mrtvý\n";
+        std::cerr << "❌ Send selhal, socket mrtvý" << std::endl;
         return false;
     }
 
-    if (sent != static_cast<ssize_t>(buffer.size())) {
-        std::cerr << "❌ Neúplné odeslání packetu\n";
+    if (sent != static_cast<ssize_t>(textData.length())) {
+        std::cerr << "❌ Neúplné odeslání packetu" << std::endl;
         return false;
     }
 
     return true;
 }
 
-std::vector<uint8_t> NetworkManager::receiveMessage(int socket) {
-    std::vector<uint8_t> buffer;
+static bool readUntilNewline(int socket, std::string& output) {
+    output.clear();
+    char buffer[1];
 
-    // 1️⃣ Načti size (2B)
-    uint8_t sizeBytes[2];
-    if (!recvExact(socket, sizeBytes, 2)) {
-        std::cout << "🔌 receiveMessage: Selhalo čtení velikosti zprávy" << std::endl;
-        return {};  // Prázdný buffer = odpojení
+    while (true) {
+        ssize_t r = recv(socket, buffer, 1, 0);
+
+        // 🔴 Detekce odpojení
+        if (r == 0) {
+            std::cout << "🔌 Socket " << socket << " byl zavřen" << std::endl;
+            return false;
+        }
+
+        if (r < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                std::cout << "⏱️ Socket " << socket << " timeout" << std::endl;
+            } else {
+                std::cerr << "❌ Socket " << socket << " chyba: "
+                          << strerror(errno) << std::endl;
+            }
+            return false;
+        }
+
+        // Přidáme znak
+        output += buffer[0];
+
+        // Pokud jsme našli \n, hotovo
+        if (buffer[0] == Protocol::TERMINATOR) {
+            return true;
+        }
+
+        // Ochrana proti příliš dlouhým zprávám
+        if (output.length() > Protocol::MAX_MESSAGE_SIZE) {
+            std::cerr << "❌ Zpráva příliš dlouhá" << std::endl;
+            return false;
+        }
+    }
+}
+
+std::string NetworkManager::receiveMessage(int socket) {
+    std::string data;
+
+    if (!readUntilNewline(socket, data)) {
+        std::cout << "🔌 receiveMessage: Selhalo čtení zprávy" << std::endl;
+        return "";
     }
 
-    uint16_t msgSize = sizeBytes[0] | (sizeBytes[1] << 8);
-
-    if (msgSize < Protocol::HEADER_SIZE || msgSize > Protocol::MAX_MESSAGE_SIZE) {
-        std::cerr << "❌ [NET] Neplatná velikost: " << msgSize << std::endl;
-        return {};
-    }
-
-    buffer.resize(msgSize);
-    buffer[0] = sizeBytes[0];
-    buffer[1] = sizeBytes[1];
-
-    // 2️⃣ Načti zbytek
-    if (!recvExact(socket, buffer.data() + 2, msgSize - 2)) {
-        std::cout << "🔌 receiveMessage: Selhalo čtení těla zprávy" << std::endl;
-        return {};  // Prázdný buffer = odpojení
-    }
-
-    std::cout << "✅ Přijat packet" << std::endl;
-
-    return buffer;
+    std::cout << "✅ Přijata zpráva: " << data << std::endl;
+    return data;
 }
 
 int NetworkManager::checkMessage(Protocol::Message msg, int clientNumber, int required_players) {
@@ -285,38 +496,4 @@ int NetworkManager::checkMessage(Protocol::Message msg, int clientNumber, int re
     }
 
     return 1;
-}
-
-bool NetworkManager::recvExact(int socket, uint8_t* buffer, size_t len) {
-    size_t total = 0;
-
-    while (total < len) {
-        ssize_t r = recv(socket, buffer + total, len - total, 0);
-
-        // 🔴 DETEKCE ODPOJENÍ
-        if (r == 0) {
-            // Socket byl zavřen klientem (graceful shutdown)
-            std::cout << "🔌 Socket " << socket << " byl zavřen klientem (recv vrátil 0)" << std::endl;
-            return false;
-        }
-
-        if (r < 0) {
-            // Chyba při čtení
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                std::cout << "⏱️ Socket " << socket << " timeout" << std::endl;
-            } else if (errno == ECONNRESET) {
-                std::cout << "🔌 Socket " << socket << " - connection reset by peer" << std::endl;
-            } else if (errno == EPIPE) {
-                std::cout << "🔌 Socket " << socket << " - broken pipe" << std::endl;
-            } else {
-                std::cerr << "❌ Socket " << socket << " chyba: "
-                          << strerror(errno) << " (errno: " << errno << ")" << std::endl;
-            }
-            return false;
-        }
-
-        total += r;
-    }
-
-    return true;
 }

@@ -12,18 +12,9 @@ MessageHandler::MessageHandler(NetworkManager* networkManager, ClientManager* cl
     std::cout << "📨 MessageHandler inicializován" << std::endl;
 }
 
-void MessageHandler::processClientMessage(ClientInfo* client, std::vector<uint8_t> recvMsg) {
-    Protocol::Message msg = Protocol::deserialize(recvMsg);
+void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Message& msg) {
 
     std::cout << "\n📨 Od hráče #" << client->playerNumber << " ";
-
-    for (size_t i = 0; i < msg.fields.size(); ++i) {
-        std::cout << msg.fields[i];
-        if (i + 1 < msg.fields.size()) {
-            std::cout << " | ";
-        }
-    }
-    std::cout << std::endl;
 
     Protocol::MessageType msgType = msg.type;
     std::vector<std::string> data = msg.fields;

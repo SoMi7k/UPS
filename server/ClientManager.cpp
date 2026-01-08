@@ -346,11 +346,11 @@ void ClientManager::sendToPlayer(int playerNumber, Protocol::MessageType msgType
 }
 
 u_int8_t ClientManager::findPacketID(int clientNumber, int packetID) {
-    std::vector<std::vector<u_int8_t>> packets = networkManager->getPackets();  // Reference pro efektivitu
+    std::vector<std::string> packets = networkManager->getPackets();  // Reference pro efektivitu
 
     if (packetID == -1) {
         for (int i = packets.size() - 1; i >= 0; i--) {
-            const std::vector<u_int8_t>& packet = packets[i];
+            const auto& packet = packets[i];
             Protocol::Message msg = Protocol::deserialize(packet);
             int packetClient = msg.clientID;
             if (packetClient == clientNumber) {
@@ -359,7 +359,7 @@ u_int8_t ClientManager::findPacketID(int clientNumber, int packetID) {
         }
     } else {
         for (int i = packets.size() - 1; i >= 0; i--) {
-            const std::vector<u_int8_t>& packet = packets[i];
+            const auto& packet = packets[i];
             Protocol::Message msg = Protocol::deserialize(packet);
             int packetClient = msg.clientID;
             int actualPacketID = msg.packetID;
@@ -393,14 +393,14 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
     }
 
     // Sebereme všechny chybějící packety
-    std::vector<std::vector<u_int8_t>> missingPackets;
+    std::vector<std::string> missingPackets;
 
     // Procházíme od (lastReceived + 1) do latest (včetně)
     for (int id = lastReceivedPacketID + 1; id <= latestPacketID; id++) {
         // Ošetření wraparound (pokud ID překročilo 255)
         int actualID = id % NetworkManager::MAXIMUM_PACKET_SIZE;
 
-        std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, actualID);
+        std::string packet = networkManager->findPacketByID(client->playerNumber, actualID);
         Protocol::Message msg = Protocol::deserialize(packet);
 
         if (!packet.empty()) {
@@ -416,7 +416,7 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
 
         // Nejdřív od (lastReceived + 1) do 254
         for (int id = lastReceivedPacketID + 1; id < NetworkManager::MAXIMUM_PACKET_SIZE; id++) {
-            std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, id);
+            std::string packet = networkManager->findPacketByID(client->playerNumber, id);
             if (!packet.empty()) {
                 missingPackets.push_back(packet);
                 std::cout << "   📦 Našel packet ID:" << id << " (wraparound)" << std::endl;
@@ -425,7 +425,7 @@ void ClientManager::sendLossPackets(ClientInfo* client, int lastReceivedPacketID
 
         // Pak od 0 do latest
         for (int id = 0; id <= latestPacketID; id++) {
-            std::vector<u_int8_t> packet = networkManager->findPacketByID(client->playerNumber, id);
+            std::string packet = networkManager->findPacketByID(client->playerNumber, id);
             if (!packet.empty()) {
                 missingPackets.push_back(packet);
                 std::cout << "   📦 Našel packet ID:" << id << " (wraparound)" << std::endl;

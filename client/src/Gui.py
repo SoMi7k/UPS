@@ -36,6 +36,8 @@ class Gui:
         self.reconnect_max = 60
         
         # === VYKRESLENÍ HRY MARIÁŠ ===
+        self.last_redraw_time = 0
+        self.redraw_interval = 1000  # ms = 1 sekunda
         self.gameManager = None
         
         # === OSTATNÍ ===
@@ -58,21 +60,30 @@ class Gui:
         self.needs_redraw = True
     
     def should_redraw(self) -> bool:
-        """Rozhodne, zda je potřeba překreslit."""
-        # Vždy překresli pokud je flag nastaven
+        now = pygame.time.get_ticks()
+
+        # Vynucený redraw
         if self.needs_redraw:
+            self.last_redraw_time = now
             return True
-        
-        # Překresli pokud se hýbe myš (pro hover efekty)
+
+        # Pohyb myši
         current_mouse_pos = pygame.mouse.get_pos()
         if current_mouse_pos != self.last_mouse_pos:
             self.last_mouse_pos = current_mouse_pos
+            self.last_redraw_time = now
             return True
-        
-        # Animované stavy potřebují neustálé překreslování
+
+        # Animované stavy
         if self.get_state() in [GameState.CONNECTING, GameState.RECONNECTING]:
+            self.last_redraw_time = now
             return True
-        
+
+        # 🆕 Periodický redraw (např. texty, waiting screen)
+        if now - self.last_redraw_time >= self.redraw_interval:
+            self.last_redraw_time = now
+            return True
+
         return False
     
         
@@ -398,9 +409,6 @@ class Gui:
         if self.gameManager.click_lock:
             return
 
-        if not self.gameManager.game.active_player:
-            return
-
         if not self.gameManager.active_rects:
             return
 
@@ -409,16 +417,15 @@ class Gui:
                 self.gameManager.click_lock = True
                 print(f"🎯 Kliknuto na: {label}")
 
-                # Rozlišení typu akce
+                if label in ("ANO", "NE"):
+                    self.client.send_message(MessageType.RESET, [label])
+                    print(f"📤 RESET: {label}")
+                    return
+
                 if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
                     self.client.send_message(MessageType.CARD, [label])
-                    print(f"📤 Odesílám kartu: {label}")
                 else:
-                    if label in ("ANO", "NE"):
-                        self.client.send_message(MessageType.RESET, [label])
-                    else:
-                        self.client.send_message(MessageType.BIDDING, [label])
-                    print(f"📤 Odesílám volbu: {label}")
+                    self.client.send_message(MessageType.BIDDING, [label])
 
                 self.gameManager.game.active_player = False
                 break
