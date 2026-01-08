@@ -53,7 +53,7 @@ bool NetworkManager::isValidMessageString(const std::string& data) {
 
     // === 4. Počet delimiterů (minimálně 3: SIZE|PACKET|CLIENT|TYPE) ===
     int delimiterCount = std::count(data.begin(), data.end(), Protocol::DELIMITER);
-    if (delimiterCount < 3) {
+    if (delimiterCount < 2) {
         std::cerr << "❌ [VALIDATION] Nedostatek delimiterů: "
                   << delimiterCount << " < 3" << std::endl;
         return false;
