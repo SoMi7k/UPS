@@ -31,60 +31,33 @@ public:
         MESSAGE_TOO_LARGE = 8
     };
 
+    bool isValidMessageString(const std::string& data); // Kontrola stringu před deserializací
+    int Validation(const Protocol::Message & msg, int clientNumber, int requiredPlayers);
     // Validace zprávy s důvodem selhání
-    ValidationResult validateMessage(const Protocol::Message& msg,
-                                    int clientNumber,
-                                    int requiredPlayers);
-
-    // Kontrola stringu před deserializací
-    bool isValidMessageString(const std::string& data);
+    ValidationResult validateMessage(const Protocol::Message &msg,
+                         int clientNumber,
+                         int requiredPlayers);
 
     // ===== Socket operace =====
-
-    // Inicializace serverového socketu
-    bool initializeSocket();
-
-    // Přijme nové klientské připojení
-    int acceptConnection();
-
-    // Uzavře konkrétní socket
-    void closeSocket(int socket);
-
-    // Uzavře serverový socket
-    void closeServerSocket();
+    bool initializeSocket(); // Inicializace serverového socketu
+    int acceptConnection(); // Přijme nové klientské připojení
+    void closeSocket(int socket); // Uzavře konkrétní socket
+    void closeServerSocket(); // Uzavře serverový socket
 
     // ===== Práce se zprávami =====
-
-    // Odešle zprávu klientovi podle protokolu
     bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType,
-                    std::vector<std::string> msg);
-
-    // Přijme zprávu od klienta
-    std::string receiveMessage(int socket);
+                    std::vector<std::string> msg); // Odešle zprávu klientovi podle protokolu
+    std::string receiveMessage(int socket); // Přijme zprávu od klienta
 
     // ===== Práce s pakety =====
-
-    // Najde paket podle ID klienta a ID paketu
-    std::string findPacketByID(int clientNumber, int packetID);
-
-    // Vrátí ID posledního paketu pro daného klienta
-    int findLatestPacketID(int clientNumber);
-
-    // Zkontroluje hlavičku zprávy
-    int checkMessage(Protocol::Message msg, int clientNumber, int required_players);
+    std::string findPacketByID(int clientNumber, int packetID); // Najde paket podle ID klienta a ID paketu
+    int findLatestPacketID(int clientNumber); // Vrátí ID posledního paketu pro daného klienta
+    int checkMessage(Protocol::Message msg, int clientNumber, int required_players); // Zkontroluje hlavičku zprávy
 
     // ===== Gettery =====
-
-    // Vrátí serverový socket
     int getServerSocket() const { return serverSocket; }
-
-    // Vrátí port serveru
     int getPort() const { return port; }
-
-    // Vrátí uložené pakety
     const std::vector<std::string>& getPackets() const { return packets; }
-
-    // Vrátí aktuální ID paketu
     int getCurrentPacketID() const { return packetID; }
 
 private:
@@ -94,11 +67,9 @@ private:
     int packetID;                                  // Aktuální ID paketu
     std::vector<std::string> packets;    // Uložené pakety
 
-    // Získá seznam lokálních IP adres
-    std::vector<std::string> getLocalIPAddresses();
-    // Pomocné validační funkce
-    bool isValidUTF8(const std::string& str);
-    bool containsSuspiciousPatterns(const std::string& str);
+
+    static std::vector<std::string> getLocalIPAddresses(); // Získá seznam lokálních IP adres
+    static bool containsSuspiciousPatterns(const std::string& str); // Pomocné validační funkce
 };
 
 #endif // NETWORK_MANAGER_HPP

@@ -117,23 +117,21 @@ void ClientManager::disconnectClient(ClientInfo* client) {
         auto it = std::find(clients.begin(), clients.end(), client);
         if (it != clients.end()) {
             clients.erase(it);
-            if (!client->isDisconnected) {
-                connectedPlayers--;
-            }
+            connectedPlayers--;
             std::cout << "  - Odstraněn ze seznamu" << std::endl;
             std::cout << "  - Zbývá " << connectedPlayers << "/" << requiredPlayers << " hráčů" << std::endl;
         }
     }
 
     if (client->approved) {
-        readyCount--;
+        authorizeCount--;
     }
 
     // Notifikace ostatních - teď je bezpečná
     std::vector<std::string> statusData;
     statusData.emplace_back("1"); // code
     statusData.emplace_back(client->nickname);
-    //statusData.emplace_back(std::to_string(connectedPlayers));
+    statusData.emplace_back(std::to_string(connectedPlayers));
 
     if (client->approved) {
         for (auto c : clients) {
@@ -217,10 +215,6 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
 
     std::cout << "\n🔌 Hráč #" << client->playerNumber << " se odpojil - čekám na reconnect" << std::endl;
 
-    if (!client->isDisconnected) {
-        connectedPlayers--;
-    }
-
     client->connected = false;
     client->isDisconnected = true;
     client->lastSeen = std::chrono::steady_clock::now();
@@ -264,7 +258,17 @@ void ClientManager::checkDisconnectedClients(bool running) {
                 auto elapsed = now - client->lastSeen;
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
 
-                // === PŘÍPAD 1: Klient je označen jako disconnected (čekáme na reconnect) ===
+                // === PŘÍPAD 1: Klient se připojil, ale nikdy se neautorizoval ===
+                if (client->connected && !client->approved) {
+                    if (seconds >= WELCOME_TIMEOUT_SECONDS) {
+                        std::cout << "⏱️ Klient #" << client->playerNumber
+                                  << " se neautorizoval do "
+                                  << WELCOME_TIMEOUT_SECONDS << "s – odpojuji" << std::endl;
+                        toRemove.push_back(client);
+                    }
+                }
+
+                // === PŘÍPAD 2: Klient je označen jako disconnected (čekáme na reconnect) ===
                 if (client->isDisconnected) {
                     if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
                         std::cout << "⏱️ Timeout pro odpojeného hráče #" << client->playerNumber
@@ -276,21 +280,7 @@ void ClientManager::checkDisconnectedClients(bool running) {
                                   << RECONNECT_TIMEOUT_SECONDS << "s" << std::endl;
                     }
                 }
-                // === PŘÍPAD 2: Klient je connected, ale dlouho neposlal heartbeat ===
-                else if (client->connected && client->approved) {
-                    if (seconds >= HEARTBEAT_TIMEOUT_SECONDS) {
-                        std::cout << "⚠️ Hráč #" << client->playerNumber
-                                  << " neodpovídá " << seconds << "s (timeout: "
-                                  << HEARTBEAT_TIMEOUT_SECONDS << "s)" << std::endl;
-                        toDisconnect.push_back(client);
-                    }
-                }
             }
-        }
-
-        // === Nejdřív označíme jako disconnected (necháme reconnect šanci) ===
-        for (auto* client : toDisconnect) {
-            handleClientDisconnection(client);
         }
 
         // === Pak permanentně odebereme ty, kterým vypršel reconnect timeout ===

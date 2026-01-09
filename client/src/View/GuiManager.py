@@ -131,7 +131,7 @@ class GuiManager:
         
         dots = "." * ((pygame.time.get_ticks() // 500) % 4)
         self.draw_text(f"Připojuji{dots}", self.font_large, Color.WHITE, 
-                             y=self.height // 2 - 50, center=True)
+                             y=self.height // 2 - 75, center=True)
         
         self.draw_text("Probíhá příprava hry...", self.font_small, Color.GRAY,
                              y=self.height // 2 + 20, center=True)
@@ -141,18 +141,18 @@ class GuiManager:
         self.screen.blit(self.background, (0, 0))
         if self.waiting_message:
             self.draw_text(self.waiting_message, self.font_large, Color.WHITE,
-                             y=self.height // 2 - 100, center=True)
+                             y=self.height // 2 - 75, center=True)
         else:
             self.draw_text("Čekám na hráče", self.font_large, Color.WHITE,
-                             y=self.height // 2 - 100, center=True)
+                             y=self.height // 2 - 75, center=True)
         
             player_text = f"{connected_players} / {required_players}"
             self.draw_text(player_text, self.font_large, Color.GOLD,
                                 y=self.height // 2 - 20, center=True)
             
-        dots = "." * ((pygame.time.get_ticks() // 500) % 4)
+        dots = "." * ((pygame.time.get_ticks() // 1000) % 4)
         self.draw_text(dots, self.font_medium, Color.WHITE,
-                            y=self.height // 2 + 100, center=True)
+                            y=self.height // 2 + 75, center=True)
         
         if player_number is not None:
             info_text = f"Hráč #{player_number}"

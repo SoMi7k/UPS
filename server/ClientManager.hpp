@@ -28,6 +28,7 @@ public:
     ClientManager(int requiredPlayers, NetworkManager* networkManager);
     ~ClientManager();
 
+
     // Správa klientů
     ClientInfo* addClient(int socket, const std::string& address); // Přidá klinta do lobby
     void removeClient(ClientInfo* client); // Odstraní klienta ze serveru
@@ -56,20 +57,20 @@ public:
     void sendToPlayer(int playerNumber, Protocol::MessageType msgType, std::vector<std::string> msg);  // Pošle zprávu konkrétnímu klientovi
 
     // Synchronizace jména
-    int getreadyCount() const { return readyCount; };
-    void setreadyCount() { readyCount++; };
-    void nullreadyCount() { readyCount = 0; };
+    int getauthorizeCount() const { return authorizeCount; };
+    void setauthorizeCount() { authorizeCount++; };
+    void nullauthorizeCount() { authorizeCount = 0; };
 
 private:
     NetworkManager* networkManager;
-    static constexpr int RECONNECT_TIMEOUT_SECONDS = 60;
-    static constexpr int HEARTBEAT_TIMEOUT_SECONDS = 15;
+    static constexpr int RECONNECT_TIMEOUT_SECONDS = 60; // Doba na znovupřipojení
+    static constexpr int WELCOME_TIMEOUT_SECONDS = 10; // Maximální doba na připojení klienta (neautorizovaného)
     std::vector<ClientInfo*> clients;   // Pole připojených klientů
     std::mutex clientsMutex;            // Zámek pro přístup ke správě klientů
     int requiredPlayers;                // Pož. počet hráčů
     int connectedPlayers;               // Počet připojených hráčů
     std::vector<int> clientNumbers;     // Pole čísel pro inicializaci hráčů
-    int readyCount = 0;                 // Pokud je hráčovo jméno v pořádku, je připraven ke hře
+    int authorizeCount = 0;                 // Počet autorizovaných hráčů, připravených ke hře
 
     int getFreeNumber(); // Zjistí dostupné číslo pro inicializaci klienta do hry
 };

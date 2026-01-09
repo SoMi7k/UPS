@@ -7,6 +7,7 @@
 #include "LobbyManager.hpp"
 #include <memory>
 #include <thread>
+#include <optional>
 #include <atomic>
 
 class GameServer {
@@ -15,12 +16,12 @@ private:
     std::unique_ptr<LobbyManager> lobbyManager;
     std::unique_ptr<MessageHandler> messageHandler;
 
-    std::string ip;
-    int port;
-    std::atomic<bool> running;
-    int requiredPlayers;
-    int lobbyCount;
-    std::thread acceptThread;
+    std::string ip;            // IP adresa
+    int port;                  // Port
+    std::atomic<bool> running; // Příznak běhu serveru
+    int requiredPlayers;       // Požadovaný počet hráčů
+    int lobbyCount;            // Počet lobby
+    std::thread acceptThread;  // Vlákno pro připojení klientů
 
     void startGame(Lobby* lobby);
     void acceptClients();
@@ -35,8 +36,9 @@ public:
     void start();
     void stop();
     bool isRunning() const;
-
     std::string getStatus() const;
+
+    std::optional<Protocol::Message> msgValidation(Lobby* lobby, ClientInfo* client, const std::string& recvMsg);
 };
 
 #endif // SERVER_HPP

@@ -18,6 +18,7 @@ class ClientManager:
         # Connection state
         self.connected = False
         self.running = False
+        self.disconnecting = False  # Flag pro zabránění opakovanému disconnect
         
         # Callbacks
         self.on_message: Optional[Callable] = None
@@ -71,6 +72,7 @@ class ClientManager:
             self.connected = False
             self.is_reconnecting = False
             self.running = True
+            self.disconnecting = False  # Reset při novém připojení
             
             # Spustíme listening thread
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
@@ -79,9 +81,6 @@ class ClientManager:
             # Spustíme message processing thread
             self.msg_processing_thread = threading.Thread(target=self._process_message_queue, daemon=True)
             self.msg_processing_thread.start()
-            
-            # Spustíme heartbeat thread
-            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
             
             # Pošleme CONNECT nebo RECONNECT
             if self.nickname:
@@ -148,6 +147,10 @@ class ClientManager:
         while self.running:
             try:
                 chunk = self.sock.recv(256)
+                if not chunk:  # Socket uzavřen serveren
+                    print("🔌 Server uzavřel spojení")
+                    break
+                    
                 buffer += chunk
 
                 while b'\n' in buffer:
@@ -161,7 +164,8 @@ class ClientManager:
                         self.msgCounter += 1
                         if self.msgCounter >= 3:
                             self.guiManager.error_message = "Server posílá neplatná data!"
-                            self.disconnect()
+                            self._handle_connection_lost()
+                            return
                         continue
 
                     self.msg_queue.put(msg_str)
@@ -208,10 +212,10 @@ class ClientManager:
                 print(f"Data: {fields}")
 
             if msg_type == MessageType.DISCONNECT:
-                self.connected = False
                 if fields:
                     self.guiManager.error_message = fields[0]
-                self.auto_reconnect = False
+
+                self.disconnect(send_disconnect=False)
 
             elif msg_type in (MessageType.READY, MessageType.RECONNECT):
                 self.connected = True
@@ -232,6 +236,11 @@ class ClientManager:
     
     def _handle_connection_lost(self):
         """Zpracuje ztrátu spojení."""
+        # Pokud už probíhá disconnect, nic neděláme
+        if self.disconnecting:
+            print("🔄 Disconnect už probíhá, přeskakuji...")
+            return
+            
         print("🔌 Spojení ztraceno!")
         
         was_connected = self.connected
@@ -309,18 +318,16 @@ class ClientManager:
         
         if self.on_disconnect:
             self.on_disconnect()
-    
-    def _heartbeat_loop(self):
-        """Pošle heartbeat každých 10s."""
-        while self.running:
-            while self.connected:
-                time.sleep(10)
-                self.send_message(MessageType.HEARTBEAT, [])
-            time.sleep(3)
             
-    def disconnect(self, stop_auto_reconnect: bool = True):
+    def disconnect(self, stop_auto_reconnect: bool = True, send_disconnect: bool = True):
         """Bezpečné odpojení."""
-        print("🔌 Manuální odpojení...")
+        # Pokud už probíhá disconnect, nic neděláme
+        if self.disconnecting:
+            print("🔄 Disconnect už probíhá, přeskakuji...")
+            return
+            
+        self.disconnecting = True
+        print("🔌 Odpojuji od serveru...")
         
         if stop_auto_reconnect:
             self.auto_reconnect = False
@@ -329,9 +336,17 @@ class ClientManager:
         self.running = False
         self.connected = False
         
-        if self.sock:
+        # Pošleme DISCONNECT jen pokud je to požadováno
+        if send_disconnect and self.sock:
             try:
                 self.send_message(MessageType.DISCONNECT, [])
+            except:
+                pass
+        
+        # Zavřeme socket
+        if self.sock:
+            try:
+                self.sock.close()
             except:
                 pass
     
@@ -345,7 +360,7 @@ class ClientManager:
         self.send_message(MessageType.TRICK, [])
             
     def validate_message(self, msg, required_players: int) -> bool:
-        packet_id, client_id, msg_type, fields = msg
+        _, client_id, msg_type, fields = msg
 
         if client_id < -1 or client_id >= required_players:
             return False

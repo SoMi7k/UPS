@@ -297,10 +297,14 @@ class Gui:
         match code:
             case 1:
                 print("🔔 Vypisuji STATUS 1")
-                #self.gameManager.invalid = f"Hráč {nickname} se odpojil. HRA KONČÍ! Přesouvám do lobby..."
-                self.client.disconnect()
-                self.guiManager.error_message = f"Hráč {nickname} se odpojil. HRA UKONČENA! Kontumačně vyhráváte."
-                self.set_state(GameState.LOBBY)
+                self.guiManager.waiting_message = ""
+                if self.gameManager:
+                    self.client.disconnect()
+                    self.guiManager.error_message = f"Hráč {nickname} se odpojil. HRA UKONČENA! Kontumačně vyhráváte."
+                    self.set_state(GameState.LOBBY)
+                else:
+                    self.connected_players = data[2]
+                    self.set_state(GameState.WAITING)
             case 2:
                 print("🔔 Vypisuji STATUS 2")
                 reconnect_timeout = data[2]
@@ -417,15 +421,17 @@ class Gui:
                 self.gameManager.click_lock = True
                 print(f"🎯 Kliknuto na: {label}")
 
+                # Rozlišení typu akce
+                if self.gameManager.game.active_player and any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
+                    self.client.send_message(MessageType.CARD, [label])
+                    print(f"📤 Odesílám kartu: {label}")
+                
                 if label in ("ANO", "NE"):
                     self.client.send_message(MessageType.RESET, [label])
-                    print(f"📤 RESET: {label}")
-                    return
-
-                if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
-                    self.client.send_message(MessageType.CARD, [label])
-                else:
+                    
+                if self.gameManager.game.active_player and label in ("HRA", "BETL", "DURCH", "Dobrý", "Špatný"):
                     self.client.send_message(MessageType.BIDDING, [label])
+                    print(f"📤 Odesílám volbu: {label}")
 
                 self.gameManager.game.active_player = False
                 break

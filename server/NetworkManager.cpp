@@ -11,6 +11,8 @@
 
 #include "NetworkManager.hpp"
 
+#include "ClientManager.hpp"
+
 #define QUEUE_LENGTH 10
 
 // 🆕 Konstruktor s IP adresou
@@ -122,8 +124,24 @@ bool NetworkManager::containsSuspiciousPatterns(const std::string& str) {
     return false;
 }
 
+int NetworkManager::Validation(const Protocol::Message & msg, const int clientNumber, const int requiredPlayers) {
+    auto validationResult = validateMessage(
+        msg,
+        clientNumber,
+        requiredPlayers
+    );
+
+    if (validationResult != ValidationResult::VALID) {
+        std::cerr << "❌ Hráč #" << clientNumber << " poslal nevalidní zprávu (kód: "
+            << static_cast<int>(validationResult) << "), odpojuji" << std::endl;
+        return 0;
+    }
+
+    return 1;
+}
+
 NetworkManager::ValidationResult NetworkManager::validateMessage(
-    const Protocol::Message& msg,
+    const Protocol::Message &msg,
     int clientNumber,
     int requiredPlayers) {
 
@@ -135,10 +153,12 @@ NetworkManager::ValidationResult NetworkManager::validateMessage(
 
     // === 1. KONTROLA CLIENT ID ===
     // ClientID musí odpovídat očekávanému číslu klienta
-    if (msg.clientID != clientNumber) {
-        std::cerr << "❌ [VALIDATION] ClientID nesouhlasí: "
-                  << static_cast<int>(msg.clientID) << " != " << clientNumber << std::endl;
-        return ValidationResult::INVALID_CLIENT_ID;
+    if (msg.type != Protocol::MessageType::RECONNECT) {
+        if (msg.clientID != clientNumber) {
+            std::cerr << "❌ [VALIDATION] ClientID nesouhlasí: "
+                      << static_cast<int>(msg.clientID) << " != " << clientNumber << std::endl;
+            return ValidationResult::INVALID_CLIENT_ID;
+        }
     }
 
     // ClientID musí být v platném rozsahu
