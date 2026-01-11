@@ -193,14 +193,12 @@ void Game::gameState3(const std::string& label) {
 // GAME_STATE_4 - reakce na "Dobrý"/"Špatný"
 void Game::gameState4(const std::string& label) {
     if (label == "Špatný" && !higherGame) {
-        higherGame = true;
         higherPlayer = activePlayer;
         state = State::LICITACE_BETL_DURCH;
         return;
     }
 
     if (label == "Špatný" && higherGame) {
-        higherGame = true;
         higher(activePlayer, Mode::DURCH);
         return;
     }
@@ -263,6 +261,7 @@ void Game::chooseModeState() {
 void Game::higher(Player* player, Mode mode) {
     gameLogic.setMode(mode);
     higherPlayer = player;
+    higherGame = true;
     chooseModeState();
 
     if (player->getNumber() != licitator->getNumber()) {
@@ -437,11 +436,6 @@ bool Game::gameHandler(Card &card, std::string &label) {
         case 8: result = gameState7(card); break;
         default: std::cout << "ERROR: Unknown state" << std::endl; break;
     }
-
-    // Pokud je zvolen mód od state (3) a nebo dokud není výsledek state (9)
-    //if (static_cast<int>(state) > 2 and static_cast<int>(state) < 6) {
-    //    chooseModeState();
-    //}
 
     if (oldState != state) {
         stateChanged = 1;

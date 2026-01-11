@@ -57,12 +57,6 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
 // ============================================================
 // IMPLEMENTACE HANDLERŮ
 // ============================================================
-
-void MessageHandler::handleHeartbeat(ClientInfo* client) {
-    std::cout << "💓 Heartbeat od hráče #" << client->playerNumber << std::endl;
-    client->lastSeen = std::chrono::steady_clock::now();
-}
-
 void MessageHandler::handleTrick(ClientInfo* client) {
     gameManager->handleTrick(client);
 }

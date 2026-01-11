@@ -3,7 +3,6 @@
 #include <iostream>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <algorithm>
 
 // ============================================================
 // KONSTRUKTOR A DESTRUKTOR
@@ -24,11 +23,11 @@ GameServer::GameServer(const std::string &ip, int port, int requiredPlayers,
 }
 
 GameServer::~GameServer() {
-  std::cout << "🗑️ GameServer destruktor - provádím cleanup..." << std::endl;
-  if (running) {
-    stop();
-  }
-  cleanup();
+    std::cout << "🗑️ GameServer destruktor - provádím cleanup..." << std::endl;
+    if (running) {
+        stop();
+    }
+    cleanup();
 }
 
 // ============================================================
@@ -125,42 +124,41 @@ void GameServer::startGame(Lobby *lobby) {
 }
 
 std::optional<Protocol::Message>
-GameServer::msgValidation(Lobby *lobby, ClientInfo *client,
-                          const std::string &recvMsg) {
-  if (recvMsg.empty()) {
-    std::cout << "\n⚠ Hráč #" << client->playerNumber << " ztratil spojení"
-              << std::endl;
-    if (lobby->gameStarted && client->playerNumber > -1) {
-      lobby->clientManager->handleClientDisconnection(client);
-    } else {
-      lobby->clientManager->disconnectClient(client);
+    GameServer::msgValidation(Lobby *lobby, ClientInfo *client, const std::string &recvMsg) {
+
+    if (recvMsg.empty()) {
+        std::cout << "⚠ Hráč #" << client->playerNumber << " ztratil spojení" << std::endl;
+        if (lobby->gameStarted && client->playerNumber > -1) {
+            lobby->clientManager->handleClientDisconnection(client);
+        } else {
+            lobby->clientManager->disconnectClient(client);
+        }
+        return std::nullopt;
     }
-    return std::nullopt;
-  }
+    if (!networkManager->isValidMessageString(recvMsg)) {
+        std::cerr << "❌ Hráč #" << client->playerNumber
+                  << " poslal neplatnou zprávu, odpojuji" << std::endl;
 
-  if (!networkManager->isValidMessageString(recvMsg)) {
-    std::cerr << "❌ Hráč #" << client->playerNumber
-              << " poslal neplatnou zprávu, odpojuji" << std::endl;
+        networkManager->sendMessage(client->socket, client->playerNumber,
+                                    Protocol::MessageType::DISCONNECT,
+                                    {"Invalid message format"});
 
-    networkManager->sendMessage(client->socket, client->playerNumber,
-                                Protocol::MessageType::DISCONNECT,
-                                {"Invalid message format"});
+        lobby->clientManager->disconnectClient(client);
+        return std::nullopt;
+    }
 
-    lobby->clientManager->disconnectClient(client);
-    return std::nullopt;
-  }
+    Protocol::Message msg = Protocol::deserialize(recvMsg);
 
-  Protocol::Message msg = Protocol::deserialize(recvMsg);
+    if (!networkManager->Validation(msg, client->playerNumber, requiredPlayers)) {
+        networkManager->sendMessage(client->socket, client->playerNumber,
+                                    Protocol::MessageType::DISCONNECT,
+                                    {"Neplatná zpráva"});
+        lobby->clientManager->disconnectClient(client);
+        return std::nullopt;
+    }
 
-  if (!networkManager->Validation(msg, client->playerNumber, requiredPlayers)) {
-    networkManager->sendMessage(client->socket, client->playerNumber,
-                                Protocol::MessageType::DISCONNECT,
-                                {"Neplatná zpráva"});
-    lobby->clientManager->disconnectClient(client);
-    return std::nullopt;
-  }
-
-  return msg;
+    msgBadCount = 0;
+    return msg;
 }
 
 // ============================================================
@@ -282,7 +280,7 @@ void GameServer::handleClient(ClientInfo* client, Lobby* lobby) {
         recvMsg = networkManager->receiveMessage(client->socket);
         msgOpt = msgValidation(lobby, client, recvMsg);
         if (!msgOpt.has_value()) {
-            return;  // 🆕 BREAK místo return - ať se thread ukončí čistě
+            break;
         }
         msg = *msgOpt;
 
@@ -402,25 +400,25 @@ void GameServer::stop() {
 bool GameServer::isRunning() const { return running; }
 
 std::string GameServer::getStatus() const {
-  if (lobbyManager) {
-    return lobbyManager->getLobbiesStatus();
-  }
-  return "Server není inicializován";
+    if (lobbyManager) {
+        return lobbyManager->getLobbiesStatus();
+    }
+    return "Server není inicializován";
 }
 
 // ============================================================
 // CLEANUP - Úklid zdrojů
 // ============================================================
 void GameServer::cleanup() {
-  std::cout << "🧹 Provádím cleanup..." << std::endl;
+    std::cout << "🧹 Provádím cleanup..." << std::endl;
 
-  if (lobbyManager) {
-    lobbyManager.reset();
-  }
+    if (lobbyManager) {
+        lobbyManager.reset();
+    }
 
-  if (networkManager) {
-    networkManager.reset();
-  }
+    if (networkManager) {
+        networkManager.reset();
+    }
 
-  std::cout << "✅ Cleanup dokončen" << std::endl;
+      std::cout << "✅ Cleanup dokončen" << std::endl;
 }

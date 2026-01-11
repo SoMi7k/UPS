@@ -214,11 +214,6 @@ bool ClientManager::reconnectClient(ClientInfo* oldClient, int newSocket) {
         }
     }
 
-    // Zavře starý socket
-    if (oldClient->socket >= 0 && oldClient->socket != newSocket) {
-        shutdown(oldClient->socket, SHUT_RDWR);
-    }
-
     // Nastaví nový socket
     oldClient->socket = newSocket;
     oldClient->connected = true;
@@ -248,6 +243,7 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
     client->isDisconnected = true;
     client->lastSeen = std::chrono::steady_clock::now();
 
+    std::cout << "🔌 Uzavírám socket " << client->socket << std::endl;
     if (client->socket >= 0) {
         shutdown(client->socket, SHUT_RDWR);
         close(client->socket);

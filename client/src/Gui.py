@@ -171,7 +171,7 @@ class Gui:
         """Zpracuje WELCOME zprávu od serveru."""
         print("👋 Zpracovávám WELCOME...")
         
-        print(f"🔔 Nastavuji self.client.number na {int(data[0])}")
+        #print(f"🔔 Nastavuji self.client.number na {int(data[0])}")
         self.client.number = int(data[0])
         self.lobby_id = int(data[1])
         self.required_players = int(data[2])
@@ -307,6 +307,8 @@ class Gui:
         port_str = self.guiManager.port_input.text
         nickname = self.guiManager.nickname_input.text
         
+        self.guiManager.waiting_message = ""
+        
         valid, error_msg, port = InputValidator.validate_all(ip, port_str, nickname)
         
         if not valid:
@@ -388,6 +390,9 @@ class Gui:
 
         if self.gameManager.click_lock:
             return
+        
+        if not self.gameManager.game.active_player:
+            return
 
         if not self.gameManager.active_rects:
             return
@@ -398,14 +403,14 @@ class Gui:
                 print(f"🎯 Kliknuto na: {label}")
 
                 # Rozlišení typu akce
-                if self.gameManager.game.active_player and any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
+                if any(ch.isdigit() or ch in "♥♦♣♠" for ch in label):
                     self.client.send_message(MessageType.CARD, [label])
                     print(f"📤 Odesílám kartu: {label}")
                 
                 if label in ("ANO", "NE"):
                     self.client.send_message(MessageType.RESET, [label])
                     
-                if self.gameManager.game.active_player and label in ("HRA", "BETL", "DURCH", "Dobrý", "Špatný"):
+                if label in ("HRA", "BETL", "DURCH", "Dobrý", "Špatný"):
                     self.client.send_message(MessageType.BIDDING, [label])
                     print(f"📤 Odesílám volbu: {label}")
 

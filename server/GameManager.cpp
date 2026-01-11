@@ -295,6 +295,15 @@ void GameManager::handleCard(Card card) {
             std::pair<int, int> res = game->getResult();
             std::string gameResult = std::to_string(res.first) + ":" + std::to_string(res.second);
             clientManager->broadcastMessage(Protocol::MessageType::RESULT, {gameResult});
+
+            // Odešleme
+            for (auto player : players) {
+                std::vector<std::string> turnData;
+                turnData.emplace_back("Budete hrát znova?");
+                turnData.emplace_back(std::to_string(player->getNumber()));
+
+                clientManager->sendToPlayer(player->getNumber(), Protocol::MessageType::YOUR_TURN, turnData);
+            }
         }
 
         if (!game->isWaitingForTrickEnd()) {

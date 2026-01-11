@@ -18,6 +18,7 @@ class GameManager:
         self.invalid = None
         self.waiting_for_trick = False
         self.offsets: dict = {}  # Pro animaci karet
+        self.bit = 0
         
         
     def set_game(self):
@@ -286,8 +287,6 @@ class GameManager:
         if self.game.state == State.LICITACE_TRUMF:
             self.show_pick_trumph()
         elif self.game.state == State.LICITACE_TALON:
-            if self.client.number == 1:
-                self.client.sock.close()  
             self.show_removing_to_talon()
         elif self.game.state == State.LICITACE_HRA:
             self.show_mode_option()

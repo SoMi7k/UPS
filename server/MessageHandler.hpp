@@ -20,7 +20,6 @@ private:
     GameManager* gameManager;
 
     // Jednotlivé handlery pro různé typy zpráv
-    void handleHeartbeat(ClientInfo* client);
     void handleTrick(ClientInfo* client);
     void handleCard(const std::string&);
     void handleBidding(std::string& data);
