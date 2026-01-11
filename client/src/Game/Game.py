@@ -11,8 +11,8 @@ class State(Enum):
     LICITACE_BETL_DURCH = 5
     HRA = 6
     BETL = 7
-    DURCH = 7
-    END = 8
+    DURCH = 8
+    END = 9
 
 # Hlavní třída Game
 class Game:

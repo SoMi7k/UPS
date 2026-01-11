@@ -19,6 +19,7 @@ struct ClientInfo {
     bool isDisconnected;        // Příznak, zda byl klient odpojen
     std::string nickname;       // Přezdívka hráče
     bool approved;              // Schválení připojení (např. po reconnectu)
+    std::chrono::steady_clock::time_point createdAt; // Vytvoření proměnné pro timeout při připojení
 };
 
 class NetworkManager;

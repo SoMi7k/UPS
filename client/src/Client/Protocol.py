@@ -1,12 +1,9 @@
-import struct
 from enum import IntEnum
-from typing import List
 
 # ============================================================
 # PROTOCOL - Definice protokolu (stejné jako v C++)
 # ============================================================
 class MessageType(IntEnum):
-    ERROR = 0
     STATUS = 1
     WELCOME = 2
     STATE = 3
@@ -18,14 +15,13 @@ class MessageType(IntEnum):
     WAIT_LOBBY = 9
     WAIT = 10
     INVALID = 11
-    READY = 12
+    AUTHORIZE = 12
     RECONNECT = 13
     CONNECT = 14
     CARD = 15
     TRICK = 16
     BIDDING = 17
     RESET = 18
-    HEARTBEAT = 19
 
 DELIMITER = '|'
 TERMINATOR = '\n'
@@ -63,7 +59,6 @@ class Protocol:
         if len(parts) < 4:
             raise ValueError(f"Neplatná zpráva: {text}")
 
-        size = int(parts[0])
         packet_id = int(parts[1])
         client_id = int(parts[2])
         msg_type = MessageType(int(parts[3]))

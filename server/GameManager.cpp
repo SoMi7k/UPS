@@ -252,16 +252,6 @@ void GameManager::handleBidding(std::string& label) {
         sendGameStateToPlayer(player->getNumber());
     }
 
-    if (label == "BETL" || label == "DURCH") {
-        for (auto player : players) {
-            std::vector<std::string> data = serializeGameStart(player->getNumber());
-            clientManager->sendToPlayer(player->getNumber(), Protocol::MessageType::GAME_START, data);
-        }
-    } else {
-        std::lock_guard<std::mutex> lock(gameMutex);
-        game->stateChanged = 0;
-    }
-
     if (game->getState() == State::LICITACE_TALON) {
         std::string clientData = serializePlayer(game->getActivePlayer()->getNumber());
         clientManager->sendToPlayer(game->getActivePlayer()->getNumber(), Protocol::MessageType::CLIENT_DATA, {clientData});
@@ -301,7 +291,7 @@ void GameManager::handleCard(Card card) {
         clientManager->sendToPlayer(actualActivePlayerNumber, Protocol::MessageType::CLIENT_DATA, {clientData});
 
         if (game->getState() == State::END) {
-            clientManager->nullreadyCount();
+            clientManager->nullauthorizeCount();
             std::pair<int, int> res = game->getResult();
             std::string gameResult = std::to_string(res.first) + ":" + std::to_string(res.second);
             clientManager->broadcastMessage(Protocol::MessageType::RESULT, {gameResult});

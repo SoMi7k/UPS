@@ -19,23 +19,11 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
     Protocol::MessageType msgType = msg.type;
     std::vector<std::string> data = msg.fields;
 
-    /*
-    if (data.empty()) {
-        std::cerr << "⚠ Nepodařilo se parsovat zprávu" << std::endl;
-        sendError(client, Protocol::MessageType::ERROR, "Neplatný formát zprávy");
-        return;
-    }
-    */
-
     std::cout << "🔄 Zpracovávám zprávu typu: " << static_cast<int>(msgType)
               << " od hráče #" << client->playerNumber << std::endl;
 
-    // ===== HEARTBEAT =====
-    if (msgType == Protocol::MessageType::HEARTBEAT) {
-        handleHeartbeat(client);
-    }
     // ===== TRICK =====
-    else if (msgType == Protocol::MessageType::TRICK) {
+    if (msgType == Protocol::MessageType::TRICK) {
         handleTrick(client);
     }
     // ===== CARD =====
@@ -95,9 +83,9 @@ void MessageHandler::handleReset(ClientInfo* client, const std::string& data) {
     std::cout << "🔄 Hráč #" << client->playerNumber << " žádá o reset" << std::endl;
 
     if (data == "ANO") {
-        clientManager->setreadyCount();
+        clientManager->setauthorizeCount();
         clientManager->sendToPlayer(client->playerNumber, Protocol::MessageType::WAIT_LOBBY,
-            {std::to_string(clientManager->getreadyCount())});
+            {std::to_string(clientManager->getauthorizeCount())});
         std::cout << "  -> WAIT_LOBBY odesláno hráči #" << client->playerNumber << std::endl;
     } else {
         client->approved = false;

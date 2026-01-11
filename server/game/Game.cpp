@@ -180,7 +180,6 @@ void Game::gameState3(const std::string& label) {
         higher(activePlayer, Mode::BETL);
     } else {
         higher(activePlayer, Mode::DURCH);
-        state = State::DURCH;
         return;
     }
 
@@ -209,12 +208,13 @@ void Game::gameState4(const std::string& label) {
     if (label == "Dobrý" && higherGame) {
         state = State::BETL;
         activePlayer = players[higherPlayer->getNumber()];
+        gameStarted = 1;
         return;
     }
 
     if (label == "Dobrý" && activePlayer->getNumber() == numPlayers - 1) {
-        chooseModeState();
         activePlayer = players[licitator->getNumber()];
+        state = State::HRA;
     }
 
     std::cout << "Zahlášeno " << label << std::endl;
@@ -233,6 +233,8 @@ void Game::gameState5(const std::string& label) {
     } else {
         higher(activePlayer, Mode::BETL);
         higherPlayer = activePlayer;
+        gameStarted = 1;
+        state = State::BETL;
     }
 
     std::cout << "Změna hry " << label << std::endl;
@@ -245,18 +247,14 @@ void Game::chooseModeState() {
             state = State::HRA;
             break;
         case Mode::BETL:
-            state = State::BETL;
             std::cout << "Trumph vynulován!" << std::endl;
             gameLogic.setTrumph(std::nullopt);
             break;
         case Mode::DURCH:
-            state = State::DURCH;
             std::cout << "Trumph vynulován!" << std::endl;
             gameLogic.setTrumph(std::nullopt);
-            break;
-        default:
-            state = State::HRA;
-            gameLogic.setMode(Mode::HRA);
+            state = State::DURCH;
+            gameStarted = 1;
             break;
     }
 }
@@ -265,8 +263,9 @@ void Game::chooseModeState() {
 void Game::higher(Player* player, Mode mode) {
     gameLogic.setMode(mode);
     higherPlayer = player;
+    chooseModeState();
 
-    if (player != licitator) {
+    if (player->getNumber() != licitator->getNumber()) {
         licitator = player;
         gameLogic.moveFromTalon(*player);
         state = State::LICITACE_TALON;
@@ -435,8 +434,15 @@ bool Game::gameHandler(Card &card, std::string &label) {
         case 5: gameState5(label); break;
         case 6: result = gameState6(card); break;
         case 7: result = gameState7(card); break;
+        case 8: result = gameState7(card); break;
         default: std::cout << "ERROR: Unknown state" << std::endl; break;
     }
+
+    // Pokud je zvolen mód od state (3) a nebo dokud není výsledek state (9)
+    //if (static_cast<int>(state) > 2 and static_cast<int>(state) < 6) {
+    //    chooseModeState();
+    //}
+
     if (oldState != state) {
         stateChanged = 1;
     }

@@ -11,7 +11,6 @@ class Color(Tuple, Enum):
     LIGHT_GRAY = (240, 240, 240)
     DARK_YELLOW = (175, 175, 20)
     DARK_GREEN = (0, 100, 0)
-    #RED = (220, 20, 60)
     BLUE = (70, 130, 180)
     GOLD = (255, 215, 0)
     GREEN = (46, 204, 113)
@@ -63,19 +62,21 @@ class InputBox:
         self.font = pygame.font.Font(None, 32)
         self.font_small = pygame.font.Font(None, 20)
         
-        # 🆕 Typ vstupu a validace
+        # Typ vstupu a validace
         self.input_type = input_type  # "ip", "port", "nickname", "text"
         self.error_message = ""
         
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
-            self.color = self.color_active if self.active else self.color_inactive
+            # Nastavíme barvu podle validace
+            self._update_color()
         
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
-                self.validate()  # 🆕 Validace po každé změně
+                self.validate()
+                self._update_color()  # Aktualizace barvy ihned
             elif event.key == pygame.K_RETURN:
                 return True
             else:
@@ -90,25 +91,39 @@ class InputBox:
                 
                 if len(self.text) < max_len:
                     self.text += event.unicode
-                    self.validate()  # 🆕 Validace po každé změně
+                    self.validate()
+                    self._update_color()  # Aktualizace barvy ihned
         return False
+    
+    def _update_color(self):
+        """Nastaví barvu podle validace a active stavu."""
+        is_valid = self.validate()
+        
+        if not is_valid:
+            self.color = self.color_error
+        elif self.active:
+            self.color = self.color_active
+        else:
+            self.color = self.color_inactive
     
     def validate(self):
         """Validuje obsah podle typu inputu."""
         if self.input_type == "nickname":
             valid, error = InputValidator.validate_nickname(self.text)
             self.error_message = error if not valid else ""
-            self.color = self.color_error if not valid else (self.color_active if self.active else self.color_inactive)
+            return valid
         
         elif self.input_type == "port":
             valid, error, _ = InputValidator.validate_port(self.text)
             self.error_message = error if not valid else ""
-            self.color = self.color_error if not valid else (self.color_active if self.active else self.color_inactive)
+            return valid
         
         elif self.input_type == "ip":
             valid, error = InputValidator.validate_ip(self.text)
             self.error_message = error if not valid else ""
-            self.color = self.color_error if not valid else (self.color_active if self.active else self.color_inactive)
+            return valid
+        
+        return True  # Pro typ "text" není validace
     
     def draw(self, screen):
         # Vykresli label
@@ -123,7 +138,7 @@ class InputBox:
         txt_surface = self.font.render(self.text, True, Color.BLACK)
         screen.blit(txt_surface, (self.rect.x + 10, self.rect.y + 10))
         
-        # 🆕 Vykresli chybovou zprávu pod inputem
+        # Vykresli chybovou zprávu pod inputem
         if self.error_message:
             error_surf = self.font_small.render(self.error_message, True, Color.RED)
             screen.blit(error_surf, (self.rect.x, self.rect.y + self.rect.height + 5))

@@ -11,7 +11,6 @@ namespace Protocol {
 
     // Typy zpráv (stejné jako předtím)
     enum class MessageType : uint8_t {
-        ERROR = 0,
         STATUS = 1,
         WELCOME = 2,
         STATE = 3,
@@ -23,14 +22,13 @@ namespace Protocol {
         WAIT_LOBBY = 9,
         WAIT = 10,
         INVALID = 11,
-        READY = 12,
+        AUTHORIZE = 12,
         RECONNECT = 13,
         CONNECT = 14,
         CARD = 15,
         TRICK = 16,
         BIDDING = 17,
         RESET = 18,
-        HEARTBEAT = 19
     };
 
     // Konstanty
@@ -40,13 +38,13 @@ namespace Protocol {
 
     // Struktura zprávy
     struct Message {
-        uint16_t size;          // Celková velikost
+        uint16_t size{};          // Celková velikost
         uint8_t packetID;       // ID packetu
         uint8_t clientID;       // ID klienta
         MessageType type;       // Typ zprávy
         std::vector<std::string> fields;  // Data
 
-        Message() : size(0), packetID(0), clientID(0), type(MessageType::ERROR) {}
+        Message() : packetID(0), clientID(0), type(MessageType::STATUS) {}
 
         Message(uint8_t pID, uint8_t cID, MessageType t, const std::vector<std::string>& data)
             : packetID(pID), clientID(cID), type(t), fields(data) {

@@ -1,24 +1,26 @@
+# ============================================================
+# ClientManager - Přidání connection timeout
+# ============================================================
+
 import socket
-import struct
 import threading
 import time
 from typing import List, Optional, Callable
 from queue import Queue
 from .Protocol import Protocol, MessageType
-from src.View.GuiManager import GuiManager
 
-# ============================================================
-# CLIENT MANAGER - Síťová komunikace
-# ============================================================
 class ClientManager:
-    def __init__(self, guiManager: GuiManager):
+    def __init__(self):
         self.sock: Optional[socket.socket] = None
-        self.guiManager = guiManager
         
         # Connection state
         self.connected = False
         self.running = False
-        self.disconnecting = False  # Flag pro zabránění opakovanému disconnect
+        self.disconnecting = False
+        
+        # Network options
+        self.server_ip: Optional[str] = None
+        self.server_port: Optional[int] = None
         
         # Callbacks
         self.on_message: Optional[Callable] = None
@@ -36,24 +38,43 @@ class ClientManager:
         self.msg_processing_thread: Optional[threading.Thread] = None
         self.msg_queue: Queue = Queue()
         
+        # Synchronizace
+        self.listen_ready = threading.Event()
+        self.welcome_received = threading.Event()  # 🆕 Event pro WELCOME zprávu
+        
         # Reconnect config
-        self.server_ip: Optional[str] = None
-        self.server_port: Optional[int] = None
         self.auto_reconnect = False
         self.is_reconnecting = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
-        self.reconnect_delay = 5.0
+        self.max_reconnect_attempts = 3
+        self.reconnect_delay = 10
+        
+        # 🆕 Connection timeout
+        self.connection_timeout = 10.0  # 10 sekund na spojení
         
         self.msgCounter = 0
+        self.error_msg = ""
+        
+    # ============================================================
+    # CONNECT - S TIMEOUTEM
+    # ============================================================
     
-    def connect(self, ip: str, port: int, reconnect: bool = False, auto_reconnect: bool = True) -> bool:
-        """Připojí se k serveru."""
+    def connect(self, ip: str, port: int, reconnect: bool = False, 
+                auto_reconnect: bool = True) -> bool:
+        """Připojí se k serveru - S CONNECTION TIMEOUT."""
         try:
             # Uložíme server info
             self.server_ip = ip
             self.server_port = port
             self.auto_reconnect = auto_reconnect
+            
+            # Počkáme až starý listen thread skončí
+            if self.listen_thread and self.listen_thread.is_alive():
+                print("⏳ Čekám na ukončení starého listening threadu...")
+                self.running = False
+                self.listen_thread.join(timeout=2.0)
+                if self.listen_thread.is_alive():
+                    print("⚠️ Starý thread stále běží, pokračuji...")
             
             # Zavřeme staré připojení
             if self.sock:
@@ -61,6 +82,7 @@ class ClientManager:
                     self.sock.close()
                 except:
                     pass
+                self.sock = None
             
             # Vytvoříme nový socket
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -69,137 +91,85 @@ class ClientManager:
             print(f"Připojuji se na {ip}:{port}...")
             self.sock.connect((ip, port))
             
+            # Reset stavů
             self.connected = False
             self.is_reconnecting = False
             self.running = True
-            self.disconnecting = False  # Reset při novém připojení
+            self.disconnecting = False
+            self.msgCounter = 0
+            self.error_msg = ""
+            
+            # Reset events
+            self.listen_ready.clear()
+            self.welcome_received.clear()
             
             # Spustíme listening thread
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
             self.listen_thread.start()
             
+            # Počkáme až listening thread naběhne
+            print("⏳ Čekám na listening thread...")
+            if not self.listen_ready.wait(timeout=5.0):
+                print("❌ Listening thread se nespustil včas!")
+                self.running = False
+                if self.sock:
+                    self.sock.close()
+                return False
+            print("✅ Listening thread připraven")
+            
             # Spustíme message processing thread
-            self.msg_processing_thread = threading.Thread(target=self._process_message_queue, daemon=True)
+            self.msg_processing_thread = threading.Thread(
+                target=self._process_message_queue, daemon=True
+            )
             self.msg_processing_thread.start()
             
             # Pošleme CONNECT nebo RECONNECT
             if self.nickname:
                 if reconnect:
-                    self.send_message(MessageType.RECONNECT, [self.nickname, str(self.last_packet_id)])
+                    self.send_message(MessageType.RECONNECT, 
+                                    [self.nickname, str(self.last_packet_id)])
                     print(f"🔄 Pokus o reconnect: {self.nickname}")
-                else:
-                    self.send_message(MessageType.CONNECT, [self.nickname])
             
-            return True
-            
-        except Exception as e:
-            print(f"❌ Chyba připojení: {e}")
-            self.connected = False
-            return False
-    
-    def send_message(self, msg_type: MessageType, fields: List[str]) -> bool:
-        """Pošle zprávu serveru."""
-        try:
-            if not self.sock:
-                print("❌ Socket není inicializován")
+            # 🆕 ČEKÁME NA WELCOME/READY ZPRÁVU S TIMEOUTEM
+            print(f"⏳ Čekám na odpověď od serveru (timeout: {self.connection_timeout}s)...")
+            if not self.welcome_received.wait(timeout=self.connection_timeout):
+                print("❌ Server neodpověděl včas (timeout)!")
+                self.error_msg = "Server neodpověděl"
+                self.disconnect(send_disconnect=False, msg="Connection timeout")
                 return False
             
-            # Packet ID a client number (server je ignoruje, ale musíme je poslat)
-            client_number = self.number if self.number is not None else 0
-            
-            # Serializujeme zprávu
-            data = Protocol.serialize(self.last_packet_id, client_number, msg_type, fields)
-            
-            print(f"📤 Odesílám: {msg_type.name} ({len(data)} bytů)")
-            print(f"📤 Odeslané byty: {data}")
-            
-            # Odešleme celou zprávu
-            self._send_exactly(data)
-            
+            print("✅ Server odpověděl, spojení aktivní")
             return True
             
-        except Exception as e:
-            print(f"❌ Chyba odeslání: {e}")
+        except socket.timeout:
+            print(f"❌ Timeout při připojování k {ip}:{port}")
+            self.error_msg = "Timeout při připojování"
             self.connected = False
+            self.running = False
+            if self.sock:
+                try:
+                    self.sock.close()
+                except:
+                    pass
+                self.sock = None
+            return False
+
+        except Exception as e:
+            print(f"❌ Chyba připojení: {e}")
+            self.error_msg = str(e)
+            self.connected = False
+            self.running = False
+            if self.sock:
+                try:
+                    self.sock.close()
+                except:
+                    pass
+                self.sock = None
             return False
     
-    def _send_exactly(self, data: bytes):
-        """Pošle všechna data (ošetření částečného send)."""
-        sent = 0
-        while sent < len(data):
-            try:
-                n = self.sock.send(data[sent:])
-                if n == 0:
-                    raise ConnectionError("Socket uzavřen")
-                sent += n
-                
-                if sent < len(data):
-                    print(f"⏳ Částečné odeslání: {sent}/{len(data)} bytů")
-                    
-            except socket.timeout:
-                continue
-    
-    def _listen_loop(self):
-        print("🔄 Listening thread spuštěn")
-
-        buffer = b""
-
-        while self.running:
-            try:
-                chunk = self.sock.recv(256)
-                if not chunk:  # Socket uzavřen serveren
-                    print("🔌 Server uzavřel spojení")
-                    break
-                    
-                buffer += chunk
-
-                while b'\n' in buffer:
-                    line, buffer = buffer.split(b'\n', 1)
-                    line += b'\n'
-
-                    msg_str = line.decode("utf-8", errors="replace")
-
-                    if not Protocol.is_valid_message_string(msg_str):
-                        print("❌ Neplatná zpráva (string validation)")
-                        self.msgCounter += 1
-                        if self.msgCounter >= 3:
-                            self.guiManager.error_message = "Server posílá neplatná data!"
-                            self._handle_connection_lost()
-                            return
-                        continue
-
-                    self.msg_queue.put(msg_str)
-                    
-            except socket.timeout:
-                continue
-            except Exception as e:
-                print(f"❌ Listening chyba: {e}")
-                break
-
-        self._handle_connection_lost()
-
-    
-    def _process_message_queue(self):
-        """Zpracovává zprávy z fronty."""
-        print("🔄 Message processing thread spuštěn")
-        
-        while self.running:
-            try:
-                # Čekáme na zprávu
-                data = self.msg_queue.get(timeout=0.1)
-                
-                print(f"⚙️ Zpracovávám zprávu z fronty (zbývá: {self.msg_queue.qsize()})")
-                
-                # Deserializujeme a zpracujeme
-                self._handle_message(data)
-                
-                # Označíme jako hotovo
-                self.msg_queue.task_done()
-                
-            except:
-                continue
-        
-        print("🛑 Message processing thread ukončen")
+    # ============================================================
+    # HANDLE MESSAGE - Se signalizací WELCOME
+    # ============================================================
     
     def _handle_message(self, data: str):
         try:
@@ -209,17 +179,31 @@ class ClientManager:
 
             print(f"📨 Přijatá zpráva: {msg_type.name}")
             if fields:
-                print(f"Data: {fields}")
-
-            if msg_type == MessageType.DISCONNECT:
-                if fields:
-                    self.guiManager.error_message = fields[0]
-
-                self.disconnect(send_disconnect=False)
-
-            elif msg_type in (MessageType.READY, MessageType.RECONNECT):
+                print(f"   Data: {fields}")
+            
+            # 🆕 WELCOME nebo READY signalizuje úspěšné spojení
+            if msg_type in (MessageType.WELCOME, MessageType.AUTHORIZE):
+                print("✅ Přijato potvrzení od serveru")
+                self.welcome_received.set()  # 🆕 Signalizuj úspěch
                 self.connected = True
-                self.guiManager.error_message = ""
+            
+            # RECONNECT také signalizuje úspěch
+            elif msg_type == MessageType.RECONNECT:
+                print("✅ Reconnect potvrzen serverem")
+                self.welcome_received.set()  # 🆕 Signalizuj úspěch
+                self.connected = True
+                
+            # DISCONNECT zpracujeme speciálně
+            elif msg_type == MessageType.DISCONNECT:
+                print("⚠️ Server poslal DISCONNECT")
+                self.auto_reconnect = False
+                
+                if self.on_disconnect:
+                    if fields:
+                        self.disconnect(msg=fields[0], send_disconnect=False)
+                    else:
+                        self.disconnect(send_disconnect=False)
+                return
 
             if self.on_message:
                 self.on_message(msg_type, fields)
@@ -230,48 +214,73 @@ class ClientManager:
             print(f"❌ Chyba parsování zprávy: {e}")
             self.msgCounter += 1
             if self.msgCounter >= 3:
-                self.guiManager.error_message = "Server posílá nesprávné zprávy!"
-                self.disconnect()
-
+                self.disconnect(msg="Server posílá nesprávné zprávy!")
     
-    def _handle_connection_lost(self):
-        """Zpracuje ztrátu spojení."""
-        # Pokud už probíhá disconnect, nic neděláme
+    # ============================================================
+    # DISCONNECT - Vylepšený
+    # ============================================================
+    
+    def disconnect(self, stop_auto_reconnect: bool = True, 
+                   send_disconnect: bool = True, msg: str = ""):
+        """Bezpečné odpojení."""
         if self.disconnecting:
             print("🔄 Disconnect už probíhá, přeskakuji...")
             return
             
-        print("🔌 Spojení ztraceno!")
+        self.disconnecting = True
+        print("🔌 Odpojuji od serveru...")
         
-        was_connected = self.connected
-        self.connected = False
+        if stop_auto_reconnect:
+            self.auto_reconnect = False
+            self.is_reconnecting = False
+        
+        # Nejdřív zastavíme listening
         self.running = False
+        self.connected = False
+        
+        # 🆕 Signalizuj welcome_received aby connect() nečekal
+        self.welcome_received.set()
+        
+        # Pošleme DISCONNECT PŘED zavřením socketu
+        if send_disconnect and self.sock:
+            try:
+                print("📤 Posílám DISCONNECT...")
+                self.send_message(MessageType.DISCONNECT, [])
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"⚠️ Chyba při posílání DISCONNECT: {e}")
+        
+        # Počkáme až listening thread skončí
+        if self.listen_thread and self.listen_thread.is_alive():
+            print("⏳ Čekám na ukončení listening threadu...")
+            self.listen_thread.join(timeout=2.0)
+            if self.listen_thread.is_alive():
+                print("⚠️ Listening thread se neukončil včas")
         
         # Zavřeme socket
         if self.sock:
             try:
                 self.sock.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️ Chyba při zavírání socketu: {e}")
+            self.sock = None
         
-        # Kontrola auto-reconnect
-        if not self.auto_reconnect:
-            print("🚫 Auto-reconnect zakázán")
-            if self.on_disconnect:
-                self.on_disconnect()
-            return
+        # Callback NAKONEC
+        if self.on_disconnect:
+            if msg:
+                self.on_disconnect([msg])
+            elif self.error_msg:
+                self.on_disconnect([self.error_msg])
+            else:
+                self.on_disconnect([""])
         
-        # Spustíme reconnect
-        if self.nickname and was_connected:
-            print("🔄 Spouštím auto-reconnect...")
-            self._start_reconnect()
-        else:
-            if self.on_disconnect:
-                self.on_disconnect()
+        self.disconnecting = False
+        print("✅ Disconnect dokončen")
     
     def _start_reconnect(self):
         """Spustí reconnect thread."""
         if self.is_reconnecting:
+            print("🔄 Reconnect už běží, přeskakuji...")
             return
         
         self.is_reconnecting = True
@@ -310,68 +319,166 @@ class ClientManager:
                 
                 return
             
+            print(f"⏳ Čekám {self.reconnect_delay}s před dalším pokusem...")
             time.sleep(self.reconnect_delay)
         
-        # Vyčerpány pokusy
         print(f"❌ Reconnect selhal po {self.max_reconnect_attempts} pokusech")
         self.is_reconnecting = False
+        self.auto_reconnect = False
         
         if self.on_disconnect:
-            self.on_disconnect()
+            self.on_disconnect(["Reconnect selhal"])
+    
+    def send_message(self, msg_type: MessageType, fields: List[str]) -> bool:
+        """Pošle zprávu serveru."""
+        try:
+            if not self.sock:
+                print("❌ Socket není inicializován")
+                return False
             
-    def disconnect(self, stop_auto_reconnect: bool = True, send_disconnect: bool = True):
-        """Bezpečné odpojení."""
-        # Pokud už probíhá disconnect, nic neděláme
+            client_number = self.number if self.number is not None else 0
+            data = Protocol.serialize(self.last_packet_id, client_number, msg_type, fields)
+            
+            print(f"📤 Odesílám: {msg_type.name} ({len(data)} bytů)")
+            self._send_exactly(data)
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Chyba odeslání: {e}")
+            self.connected = False
+            return False
+    
+    def _send_exactly(self, data: bytes):
+        """Pošle všechna data."""
+        sent = 0
+        while sent < len(data):
+            try:
+                n = self.sock.send(data[sent:])
+                if n == 0:
+                    raise ConnectionError("Socket uzavřen")
+                sent += n
+                
+                if sent < len(data):
+                    print(f"⏳ Částečné odeslání: {sent}/{len(data)} bytů")
+                    
+            except socket.timeout:
+                continue
+    
+    def _listen_loop(self):
+        """Listening thread."""
+        print("🔄 Listening thread spuštěn")
+        self.listen_ready.set()
+        
+        buffer = b""
+
+        while self.running:
+            try:
+                chunk = self.sock.recv(256)
+                if not chunk:
+                    print("🔌 Server uzavřel spojení")
+                    break
+                    
+                buffer += chunk
+
+                while b'\n' in buffer:
+                    line, buffer = buffer.split(b'\n', 1)
+                    line += b'\n'
+
+                    msg_str = line.decode("utf-8", errors="replace")
+
+                    if not Protocol.is_valid_message_string(msg_str):
+                        print("❌ Neplatná zpráva (string validation)")
+                        self.msgCounter += 1
+                        if self.msgCounter >= 3:
+                            self.error_msg = "Server posílá neplatná data!"
+                            self.running = False
+                            break
+                        continue
+
+                    self.msg_queue.put(msg_str)
+                    
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"❌ Listening chyba: {e}")
+                break
+        
+        print("🔌 Listening thread končí")
+        
+        if self.running:
+            print("🔌 Listening loop skončil neočekávaně")
+            self._handle_connection_lost()
+        else:
+            print("🔌 Listening loop skončil očekávaně")
+    
+    def _process_message_queue(self):
+        """Zpracovává zprávy z fronty."""
+        print("🔄 Message processing thread spuštěn")
+        
+        while self.running:
+            try:
+                data = self.msg_queue.get(timeout=0.1)
+                self._handle_message(data)
+                self.msg_queue.task_done()
+            except:
+                continue
+        
+        print("🛑 Message processing thread ukončen")
+    
+    def _handle_connection_lost(self):
+        """Zpracuje ztrátu spojení."""
         if self.disconnecting:
             print("🔄 Disconnect už probíhá, přeskakuji...")
             return
+        
+        if not self.running:
+            print("🔄 running == False, disconnect byl zavolán, přeskakuji...")
+            return
             
-        self.disconnecting = True
-        print("🔌 Odpojuji od serveru...")
+        print("🔌 Spojení ztraceno!")
         
-        if stop_auto_reconnect:
-            self.auto_reconnect = False
-            self.is_reconnecting = False
-        
-        self.running = False
+        was_connected = self.connected
         self.connected = False
+        self.running = False
         
-        # Pošleme DISCONNECT jen pokud je to požadováno
-        if send_disconnect and self.sock:
-            try:
-                self.send_message(MessageType.DISCONNECT, [])
-            except:
-                pass
+        print(f"⏳ Čekám na zpracování zbývajících zpráv ({self.msg_queue.qsize()})...")
+        try:
+            self.msg_queue.join()
+        except:
+            pass
         
-        # Zavřeme socket
-        if self.sock:
-            try:
-                self.sock.close()
-            except:
-                pass
+        time.sleep(0.1)
+        
+        if self.disconnecting:
+            print("🔄 Mezitím proběhl disconnect, přeskakuji auto-reconnect")
+            return
+        
+        if not self.auto_reconnect:
+            print("🚫 Auto-reconnect zakázán")
+            if self.on_disconnect:
+                self.on_disconnect(["Odpojen od serveru"])
+            return
+        
+        if self.nickname and was_connected:
+            print("🔄 Spouštím auto-reconnect...")
+            self._start_reconnect()
+        else:
+            reasons = []
+            if not self.nickname:
+                reasons.append("není nickname")
+            if not was_connected:
+                reasons.append("nebyl connected")
+            
+            print(f"🚫 Auto-reconnect neproveden: {', '.join(reasons)}")
+            self.disconnect(send_disconnect=False, msg=self.error_msg)
     
     def stop_reconnect(self):
-        """Zastaví reconnect."""
+        """Zastaví probíhající reconnect."""
+        print("🛑 Zastavuji reconnect...")
         self.is_reconnecting = False
         self.auto_reconnect = False
     
     def send_empty_trick(self):
         """Pošle prázdnou TRICK zprávu."""
         self.send_message(MessageType.TRICK, [])
-            
-    def validate_message(self, msg, required_players: int) -> bool:
-        _, client_id, msg_type, fields = msg
-
-        if client_id < -1 or client_id >= required_players:
-            return False
-
-        if msg_type.value < 0 or msg_type.value > 19:
-            return False
-
-        for field in fields:
-            if len(field) > 1000:
-                return False
-            if '\0' in field or '|' in field or '\n' in field:
-                return False
-
-        return True

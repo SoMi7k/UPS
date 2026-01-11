@@ -24,7 +24,7 @@ class Gui:
         self.guiManager = GuiManager()
         
         # === CLIENT/SPOJENÍ ===
-        self.client = ClientManager(self.guiManager)
+        self.client = ClientManager()
         self.setup_client_callbacks()
         
         # === POČET HRÁČŮ ===
@@ -149,11 +149,7 @@ class Gui:
         
         # ===== YOUR_TURN - Je můj tah =====
         elif msg_type == MessageType.YOUR_TURN:
-            self.handle_your_turn(data)
-        
-        # ===== ERROR - Chybová zpráva =====
-        elif msg_type == MessageType.ERROR:
-            self.handle_error(data)
+            self.handle_your_turn()
         
         # ===== INVALID - Nesprávný krok klienta =====
         elif msg_type == MessageType.INVALID:
@@ -163,7 +159,7 @@ class Gui:
         elif msg_type == MessageType.RESULT:
             self.handle_result(data)
         
-        # ===== STATUS - Odpojení klintů =====
+        # ===== STATUS - Odpojení klientů =====
         elif msg_type == MessageType.STATUS:
             self.handle_status(data)
             
@@ -175,11 +171,7 @@ class Gui:
         """Zpracuje WELCOME zprávu od serveru."""
         print("👋 Zpracovávám WELCOME...")
         
-        if len(data) != 3:
-            print("Chybný počet argumentů: Welcome")
-            self.client.disconnect()
-            return
-        
+        print(f"🔔 Nastavuji self.client.number na {int(data[0])}")
         self.client.number = int(data[0])
         self.lobby_id = int(data[1])
         self.required_players = int(data[2])
@@ -188,6 +180,7 @@ class Gui:
         print(f"✅ Připojeno do lobby {self.lobby_id}")
         print(f"✅ Hra Mariáš pro {self.required_players}")
         
+        self.guiManager.error_message = ""
         self.gameManager = GameManager(self.required_players, self.client, self.guiManager)
         self.set_state(GameState.CONNECTING)
         
@@ -233,7 +226,7 @@ class Gui:
         
         print("🎮 GameState Přečtený!")
     
-    def handle_your_turn(self, data: list):
+    def handle_your_turn(self):
         """Zpracuje YOUR_TURN zprávu - je můj tah."""
         print("🔔 Je můj tah!")
         self.gameManager.game.active_player = True
@@ -243,18 +236,6 @@ class Gui:
         print("🔔 Přišla zpráva o výsledku!")
         self.gameManager.game_result_reader(data)
         
-    def handle_error(self, data: list):
-        """Zpracuje ERROR zprávu od serveru."""
-        error_msg = data[0]
-        print(f"❌ CHYBA OD SERVERU: {error_msg}")
-        msg = "ERROR: " + error_msg + "\n\n" + "Přepojuji do Lobby..."
-        self.gameManager.show_error_messages(msg)
-        time.sleep(2)
-        
-        # Odpojit a vrátit do lobby
-        self.client.disconnect()
-        self.set_state(GameState.LOBBY)
-        
     def handle_client_data(self, data: list):
         """Zpracuje CLIENT_DATA zprávu."""
         self.gameManager.player_reader(data)
@@ -263,11 +244,10 @@ class Gui:
         """Zpracuje INVALID zprávu."""
         self.gameManager.invalid = data[0]
     
-    def handle_disconnect(self):
+    def handle_disconnect(self, data: list):
         """Callback při odpojení od serveru."""
-        print("🚫 Odpojen od serveru - zakazuji auto-reconnect")
-        self.auto_reconnect = False
-        self.is_reconnecting = False
+        print("🚫 Odpojen od serveru")
+        self.guiManager.error_message = data[0]
         self.set_state(GameState.LOBBY)
     
     def handle_reconnecting(self, attempt: int|None = None, max_attempts: int|None = None):
@@ -334,9 +314,6 @@ class Gui:
             self.guiManager.error_message = error_msg
             return False
         
-        # Vyčistit chybovou zprávu
-        self.guiManager.error_message = ""
-        
         print(f"🔌 Připojuji se na {ip}:{port} jako '{nickname}'...")
         
         self.set_state(GameState.CONNECTING)
@@ -396,7 +373,6 @@ class Gui:
         """Zpracuje události při reconnectingu."""
         if self.guiManager.back_button.is_clicked(event):
             # Zastavíme reconnect a vrátíme se do lobby
-            self.client.stop_reconnect()
             self.client.disconnect()
             self.set_state(GameState.LOBBY)
     

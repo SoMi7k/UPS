@@ -89,7 +89,7 @@ std::string LobbyManager::getLobbiesStatus() {
 
   for (const auto &lobby : lobbies) {
     status += "Lobby #" + std::to_string(lobby->id) + ": ";
-    status += std::to_string(lobby->getConnectedCount()) + "/" +
+    status += std::to_string(lobby->getActiveCount()) + "/" +
               std::to_string(lobby->requiredPlayers);
     status += (lobby->gameStarted ? " (hra běží)" : " (čeká)");
     status += "\n";

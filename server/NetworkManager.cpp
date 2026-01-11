@@ -171,7 +171,7 @@ NetworkManager::ValidationResult NetworkManager::validateMessage(
     // === 2. KONTROLA MESSAGE TYPE ===
     // Type musí být validní (0-19)
     int typeValue = static_cast<int>(msg.type);
-    if (typeValue < 0 || typeValue > 19) {
+    if (typeValue < 1 || typeValue > 18) {
         std::cerr << "❌ [VALIDATION] Neplatný typ zprávy: " << typeValue << std::endl;
         return ValidationResult::INVALID_MESSAGE_TYPE;
     }
@@ -193,7 +193,6 @@ NetworkManager::ValidationResult NetworkManager::validateMessage(
                 std::cerr << "⚠️ [VALIDATION] Podezřelá sekvence packetID: "
                           << static_cast<int>(msg.packetID) << " (očekáváno ~"
                           << expectedID << ")" << std::endl;
-                // Toto není fatální chyba, ale logujeme ji
             }
         }
     }

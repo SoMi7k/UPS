@@ -40,6 +40,9 @@ int ClientManager::getFreeNumber() {
     return -1;
 }
 
+// ============================================================
+// ADD & REMOVE CLIENT
+// ============================================================
 ClientInfo* ClientManager::addClient(int socket, const std::string& address) {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
@@ -52,7 +55,8 @@ ClientInfo* ClientManager::addClient(int socket, const std::string& address) {
         std::chrono::steady_clock::now(),
         false,
         "",
-        false
+        false,
+        std::chrono::steady_clock::now(),
     };
 
     connectedPlayers++;
@@ -77,6 +81,9 @@ void ClientManager::removeClient(ClientInfo* client) {
     }
 }
 
+// ============================================================
+// DISCONNECTION
+// ============================================================
 void ClientManager::disconnectAll() {
     std::vector<ClientInfo*> clientsCopy;
     {
@@ -123,10 +130,6 @@ void ClientManager::disconnectClient(ClientInfo* client) {
         }
     }
 
-    if (client->approved) {
-        authorizeCount--;
-    }
-
     // Notifikace ostatních - teď je bezpečná
     std::vector<std::string> statusData;
     statusData.emplace_back("1"); // code
@@ -139,12 +142,16 @@ void ClientManager::disconnectClient(ClientInfo* client) {
                 sendToPlayer(c->playerNumber, Protocol::MessageType::STATUS, statusData);
             }
         }
+        authorizeCount--;
     }
 
     std::cout << "✅ Hráč #" << client->playerNumber << " odpojen" << std::endl;
     std::cout << std::string(50, '-') << std::endl;
 }
 
+// ============================================================
+// FINDERS
+// ============================================================
 ClientInfo* ClientManager::findClientBySocket(int socket) {
     std::lock_guard<std::mutex> lock(clientsMutex);
 
@@ -183,22 +190,45 @@ ClientInfo* ClientManager::findDisconnectedClient(const std::string& nickname) {
     return nullptr;
 }
 
+// ============================================================
+// VÝPADEK & RECONNECTION
+// ============================================================
 bool ClientManager::reconnectClient(ClientInfo* oldClient, int newSocket) {
     if (!oldClient) return false;
 
     std::cout << "🔄 Reconnecting hráče #" << oldClient->playerNumber << std::endl;
 
-    if (oldClient->socket >= 0) {
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+
+        // Najdi klienta s tímto socketem (má playerNumber = -1)
+        auto it = std::find_if(clients.begin(), clients.end(),
+            [newSocket](ClientInfo* c) {
+                return c && c->socket == newSocket && c->playerNumber == -1;
+            });
+
+        if (it != clients.end()) {
+            std::cout << "🗑️ Odstraňuji dočasného klienta s socketem " << newSocket << std::endl;
+            delete *it;
+            clients.erase(it);
+            connectedPlayers--;
+        }
+    }
+
+    // Zavři starý socket
+    if (oldClient->socket >= 0 && oldClient->socket != newSocket) {
         close(oldClient->socket);
     }
 
+    // Nastav nový socket
     oldClient->socket = newSocket;
     oldClient->connected = true;
     oldClient->isDisconnected = false;
     oldClient->lastSeen = std::chrono::steady_clock::now();
 
+    // Status broadcast
     std::vector<std::string> statusData;
-    statusData.emplace_back("3"); // code
+    statusData.emplace_back("3");
     statusData.emplace_back(oldClient->nickname);
 
     for (auto c : clients) {
@@ -241,9 +271,8 @@ void ClientManager::handleClientDisconnection(ClientInfo* client) {
 }
 
 void ClientManager::checkDisconnectedClients(bool running) {
-    int delay = 5; // Jak často budeme kontrolovat výpadky (sekundy)
     while (running) {
-        std::this_thread::sleep_for(std::chrono::seconds(delay));  // 🆕 Častější kontrola
+        std::this_thread::sleep_for(std::chrono::seconds(2));
 
         std::vector<ClientInfo*> toRemove;
         std::vector<ClientInfo*> toDisconnect;
@@ -258,17 +287,23 @@ void ClientManager::checkDisconnectedClients(bool running) {
                 auto elapsed = now - client->lastSeen;
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
 
-                // === PŘÍPAD 1: Klient se připojil, ale nikdy se neautorizoval ===
-                if (client->connected && !client->approved) {
-                    if (seconds >= WELCOME_TIMEOUT_SECONDS) {
+                // Kontrola autorizačního timeoutu JEN pro nové klienty
+                if (client->playerNumber == -1 && !client->approved) {
+                    auto timeSinceCreation = now - client->createdAt;
+                    auto secondsSinceCreation = std::chrono::duration_cast<std::chrono::seconds>(
+                        timeSinceCreation
+                    ).count();
+
+                    // Timeout 10s POUZE pro nové klienty (ne pro reconnect)
+                    if (secondsSinceCreation >= 10) {
                         std::cout << "⏱️ Klient #" << client->playerNumber
-                                  << " se neautorizoval do "
-                                  << WELCOME_TIMEOUT_SECONDS << "s – odpojuji" << std::endl;
-                        toRemove.push_back(client);
+                                  << " se neautorizoval do 10s – odpojuji" << std::endl;
+                        toDisconnect.push_back(client);
+                        continue;
                     }
                 }
 
-                // === PŘÍPAD 2: Klient je označen jako disconnected (čekáme na reconnect) ===
+                // === Klient je disconnected (čekáme na reconnect) ===
                 if (client->isDisconnected) {
                     if (seconds >= RECONNECT_TIMEOUT_SECONDS) {
                         std::cout << "⏱️ Timeout pro odpojeného hráče #" << client->playerNumber
@@ -283,13 +318,26 @@ void ClientManager::checkDisconnectedClients(bool running) {
             }
         }
 
-        // === Pak permanentně odebereme ty, kterým vypršel reconnect timeout ===
+        // Označíme jako disconnected
+        for (auto* client : toDisconnect) {
+            // 🆕 Pokud má playerNumber == -1, odpoj natvrdo (není co reconnectovat)
+            if (client->playerNumber == -1) {
+                disconnectClient(client);
+            } else {
+                handleClientDisconnection(client);
+            }
+        }
+
+        // Permanentně odebereme
         for (auto* client : toRemove) {
             disconnectClient(client);
         }
     }
 }
 
+// ============================================================
+// GETTERS
+// ============================================================
 int ClientManager::getConnectedCount() const {
     return connectedPlayers;
 }
@@ -311,6 +359,9 @@ std::vector<ClientInfo*> ClientManager::getClients() {
     return clients;
 }
 
+// ============================================================
+// Funkce k poslání zpráv
+// ============================================================
 void ClientManager::broadcastMessage(Protocol::MessageType msgType, std::vector<std::string> msg) {
     std::lock_guard<std::mutex> lock(clientsMutex);
     std::cout << "📢 Broadcast: " <<  static_cast<int>(msgType)  << std::endl;
@@ -335,6 +386,9 @@ void ClientManager::sendToPlayer(int playerNumber, Protocol::MessageType msgType
     std::cerr << "⚠ Hráč #" << playerNumber << " nebyl nalezen" << std::endl;
 }
 
+// ============================================================
+// Algoritmus pro vrácení paketů
+// ============================================================
 u_int8_t ClientManager::findPacketID(int clientNumber, int packetID) {
     std::vector<std::string> packets = networkManager->getPackets();  // Reference pro efektivitu
 
