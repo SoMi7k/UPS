@@ -201,26 +201,25 @@ bool ClientManager::reconnectClient(ClientInfo* oldClient, int newSocket) {
     {
         std::lock_guard<std::mutex> lock(clientsMutex);
 
-        // Najdi klienta s tímto socketem (má playerNumber = -1)
         auto it = std::find_if(clients.begin(), clients.end(),
             [newSocket](ClientInfo* c) {
                 return c && c->socket == newSocket && c->playerNumber == -1;
             });
 
         if (it != clients.end()) {
-            std::cout << "🗑️ Odstraňuji dočasného klienta s socketem " << newSocket << std::endl;
+            std::cout << "🗑️ Odstraňuji dočasného klienta se socketem " << newSocket << std::endl;
             delete *it;
             clients.erase(it);
             connectedPlayers--;
         }
     }
 
-    // Zavři starý socket
+    // Zavře starý socket
     if (oldClient->socket >= 0 && oldClient->socket != newSocket) {
-        close(oldClient->socket);
+        shutdown(oldClient->socket, SHUT_RDWR);
     }
 
-    // Nastav nový socket
+    // Nastaví nový socket
     oldClient->socket = newSocket;
     oldClient->connected = true;
     oldClient->isDisconnected = false;

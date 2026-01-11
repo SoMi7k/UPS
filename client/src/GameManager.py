@@ -286,9 +286,11 @@ class GameManager:
         if self.game.state == State.LICITACE_TRUMF:
             self.show_pick_trumph()
         elif self.game.state == State.LICITACE_TALON:
+            if self.client.number == 1:
+                self.client.sock.close()  
             self.show_removing_to_talon()
         elif self.game.state == State.LICITACE_HRA:
-            self.show_mode_option()  
+            self.show_mode_option()
         elif self.game.state == State.LICITACE_DOBRY_SPATNY:
             self.show_first_bidding()  
         elif self.game.state == State.LICITACE_BETL_DURCH:
