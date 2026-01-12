@@ -199,6 +199,7 @@ class ClientManager:
                 print("✅ Reconnect potvrzen serverem")
                 self.welcome_received.set()  # 🆕 Signalizuj úspěch
                 self.connected = True
+                self.last_pong = time.time()
                 
             # DISCONNECT zpracujeme speciálně
             elif msg_type == MessageType.DISCONNECT:
@@ -502,7 +503,7 @@ class ClientManager:
 
             # Kontrola PONG
             if self.last_pong is not None:
-                if time.time() - self.last_pong > 8:
+                if time.time() - self.last_pong > 12:
                     print("💀 Server neodpovídá (PONG timeout)")
                     self._handle_connection_lost()
                     return
