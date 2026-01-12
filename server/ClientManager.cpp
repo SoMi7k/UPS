@@ -95,6 +95,7 @@ void ClientManager::disconnectAll() {
     for (auto* client : clientsCopy) {
         if (client && client->connected) {
             networkManager->sendMessage(client->socket, client->playerNumber, Protocol::MessageType::DISCONNECT, {"Server se vypíná"});
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             shutdown(client->socket, SHUT_RDWR);
             close(client->socket);
             client->connected = false;
