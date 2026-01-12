@@ -71,7 +71,7 @@ private:
     int requiredPlayers;                // Pož. počet hráčů
     int connectedPlayers;               // Počet připojených hráčů
     std::vector<int> clientNumbers;     // Pole čísel pro inicializaci hráčů
-    int authorizeCount = 0;                 // Počet autorizovaných hráčů, připravených ke hře
+    int authorizeCount = 0;             // Počet autorizovaných hráčů, připravených ke hře
 
     int getFreeNumber(); // Zjistí dostupné číslo pro inicializaci klienta do hry
 };

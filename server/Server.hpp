@@ -23,8 +23,6 @@ private:
   int requiredPlayers;       // Požadovaný počet hráčů
   int lobbyCount;            // Počet lobby
   std::thread acceptThread;  // Vlákno pro připojení klientů
-  int msgBadCount = 0;
-
   void startGame(Lobby *lobby);
   void acceptClients();
   void handleClient(ClientInfo *client, Lobby *lobby);

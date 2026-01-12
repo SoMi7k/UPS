@@ -40,7 +40,8 @@ class ClientManager:
         
         # Synchronizace
         self.listen_ready = threading.Event()
-        self.welcome_received = threading.Event()  # 🆕 Event pro WELCOME zprávu
+        self.welcome_received = threading.Event()
+        self.connection_timeout = 15
         
         # Reconnect config
         self.auto_reconnect = False
@@ -49,9 +50,7 @@ class ClientManager:
         self.max_reconnect_attempts = 6
         self.reconnect_delay = 5
         
-        # 🆕 Connection timeout
-        self.connection_timeout = 15  # 10 sekund na spojení
-        
+        # Messages
         self.msgCounter = 0
         self.error_msg = ""
         

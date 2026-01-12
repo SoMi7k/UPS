@@ -52,10 +52,6 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
         handleConnect(client);
     }
 
-    else if (msgType == Protocol::MessageType::RECONNECT) {
-        std::cout << "📨 Přijato RECONNECT od hráče #" << client->playerNumber << std::endl;
-    }
-
     // ===== UNKNOWN =====
     else {
         std::cerr << "⚠ Neznámý typ zprávy: " << static_cast<int>(msgType) << std::endl;

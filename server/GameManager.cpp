@@ -39,8 +39,8 @@ void GameManager::startGame() {
         std::cout << "✓ Hráč dostal záznam o začátku hry " << playerNum << std::endl;
     }
 
-    // ===== KROK 2: Čekání 5 sekund =====
-    std::cout << "\n⏳ Čekám 5 sekund před rozdáním karet..." << std::endl;
+    // ===== KROK 2: Prodleva mezi zahájení hry =====
+    std::cout << "\n⏳ Čekám " << WAITING_TIME << " sekund před rozdáním karet..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(WAITING_TIME));
     std::cout << "✓ Čekání dokončeno" << std::endl;
 

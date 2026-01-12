@@ -11,7 +11,6 @@
 #include <netinet/tcp.h>
 
 #include "NetworkManager.hpp"
-
 #include "ClientManager.hpp"
 
 #define QUEUE_LENGTH 10
@@ -114,7 +113,7 @@ bool NetworkManager::containsSuspiciousPatterns(const std::string& str) {
             if (consecutiveCount > 100) {
                 std::cout << "⚠️ [VALIDATION] Detekováno " << consecutiveCount
                           << " opakujících se znaků" << std::endl;
-                return true;  // Podezřelé
+                return true;
             }
         } else {
             consecutiveCount = 1;

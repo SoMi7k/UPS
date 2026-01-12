@@ -32,17 +32,13 @@ public:
     };
 
     bool isValidMessageString(const std::string& data); // Kontrola stringu před deserializací
-    int Validation(const Protocol::Message & msg, int clientNumber, int requiredPlayers);
-    // Validace zprávy s důvodem selhání
-    ValidationResult validateMessage(const Protocol::Message &msg,
-                         int clientNumber,
-                         int requiredPlayers);
+    ValidationResult validateMessage(const Protocol::Message &msg, int clientNumber, int requiredPlayers); // Validace zprávy
+    int Validation(const Protocol::Message & msg, int clientNumber, int requiredPlayers); // Vyhadnocuje zprávu pomocí validateMessage
 
     // ===== Socket operace =====
     bool initializeSocket(); // Inicializace serverového socketu
-    void closeSocket(int socket); // Uzavře konkrétní socket
     void closeServerSocket(); // Uzavře serverový socket
-    bool enableKeepAlive(int socket);
+    bool enableKeepAlive(int socket); //
 
     // ===== Práce se zprávami =====
     bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType,

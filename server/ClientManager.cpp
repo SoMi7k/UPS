@@ -321,7 +321,6 @@ void ClientManager::checkDisconnectedClients(bool running) {
 
         // Označíme jako disconnected
         for (auto* client : toDisconnect) {
-            // 🆕 Pokud má playerNumber == -1, odpoj natvrdo (není co reconnectovat)
             if (client->playerNumber == -1) {
                 disconnectClient(client);
             } else {
