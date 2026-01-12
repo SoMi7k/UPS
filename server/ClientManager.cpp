@@ -312,7 +312,7 @@ void ClientManager::checkDisconnectedClients(bool running) {
                     }
                 }
 
-                if (now - client->lastSeen > std::chrono::seconds(10)) {
+                if (client->connected && now - client->lastSeen > std::chrono::seconds(10)) {
                     std::cout << "💀 Klient #" << client->playerNumber << " timeout" << std::endl;
                     handleClientDisconnection(client);
                 }

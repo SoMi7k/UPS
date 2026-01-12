@@ -46,8 +46,8 @@ class ClientManager:
         self.auto_reconnect = False
         self.is_reconnecting = False
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 3
-        self.reconnect_delay = 10
+        self.max_reconnect_attempts = 6
+        self.reconnect_delay = 5
         self.last_pong = None
         
         # 🆕 Connection timeout
