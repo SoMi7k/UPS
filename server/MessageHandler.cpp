@@ -50,6 +50,7 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
     else {
         std::cerr << "⚠ Neznámý typ zprávy: " << static_cast<int>(msgType) << std::endl;
         sendError(client, Protocol::MessageType::DISCONNECT, "Neznámý typ zprávy: Odpojuji...\n");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         clientManager->disconnectClient(client);
     }
 }
@@ -84,6 +85,7 @@ void MessageHandler::handleReset(ClientInfo* client, const std::string& data) {
     } else {
         client->approved = false;
         networkManager->sendMessage(client->socket, client->playerNumber, Protocol::MessageType::DISCONNECT, {});
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         clientManager->disconnectClient(client);
     }
 }
