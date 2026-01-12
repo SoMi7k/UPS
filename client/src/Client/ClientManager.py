@@ -48,10 +48,9 @@ class ClientManager:
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 6
         self.reconnect_delay = 5
-        self.last_pong = None
         
         # 🆕 Connection timeout
-        self.connection_timeout = 10.0  # 10 sekund na spojení
+        self.connection_timeout = 15  # 10 sekund na spojení
         
         self.msgCounter = 0
         self.error_msg = ""
@@ -99,6 +98,7 @@ class ClientManager:
             self.disconnecting = False
             self.msgCounter = 0
             self.error_msg = ""
+            self.last_pong = None
             
             # Reset events
             self.listen_ready.clear()
