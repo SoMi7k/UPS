@@ -170,9 +170,9 @@ NetworkManager::ValidationResult NetworkManager::validateMessage(
     }
 
     // === 2. KONTROLA MESSAGE TYPE ===
-    // Type musí být validní (0-19)
+    // Type musí být validní (1-20)
     int typeValue = static_cast<int>(msg.type);
-    if (typeValue < 1 || typeValue > 18) {
+    if (typeValue < 1 || typeValue > 20) {
         std::cerr << "❌ [VALIDATION] Neplatný typ zprávy: " << typeValue << std::endl;
         return ValidationResult::INVALID_MESSAGE_TYPE;
     }
@@ -492,27 +492,4 @@ bool NetworkManager::enableKeepAlive(int socket) {
 
     std::cout << "✅ Keep-alive povolen (5 idle, 5s interval, 1 pokusy)" << std::endl;
     return true;
-}
-
-int NetworkManager::checkMessage(Protocol::Message msg, int clientNumber, int required_players) {
-    if (msg.clientID > required_players - 1) {
-        std::cout << msg.clientID << " : " << required_players << std::endl;
-        return 0;
-    }
-
-    if (msg.packetID) {
-        int lastpacketID = findLatestPacketID(clientNumber);
-
-        if (lastpacketID == -1) {
-            std::cout << msg.packetID << " : " << lastpacketID << std::endl;
-            return 0;
-        }
-    }
-
-    if (static_cast<int>(msg.type) > 19) {
-        std::cout << static_cast<int>(msg.type) << " : " << 19 << std::endl;
-        return 0;
-    }
-
-    return 1;
 }

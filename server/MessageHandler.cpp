@@ -38,6 +38,10 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
     else if (msgType == Protocol::MessageType::RESET) {
         handleReset(client, data.at(0));
     }
+    // ===== PING =====
+    else if (msgType == Protocol::MessageType::PING) {
+        networkManager->sendMessage(client->socket, client->playerNumber, Protocol::MessageType::PONG, {});
+    }
     // ===== DISCONNECT =====
     else if (msgType == Protocol::MessageType::DISCONNECT) {
         handleDisconnect(client);

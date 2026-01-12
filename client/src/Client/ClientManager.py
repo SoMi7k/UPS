@@ -48,6 +48,7 @@ class ClientManager:
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 3
         self.reconnect_delay = 10
+        self.last_pong = None
         
         # 🆕 Connection timeout
         self.connection_timeout = 10.0  # 10 sekund na spojení
@@ -106,6 +107,9 @@ class ClientManager:
             # Spustíme listening thread
             self.listen_thread = threading.Thread(target=self._listen_loop, daemon=True)
             self.listen_thread.start()
+            
+            # Heartbeat loop
+            threading.Thread(target=self._heartbeat_loop, daemon=True).start()
             
             # Počkáme až listening thread naběhne
             print("⏳ Čekám na listening thread...")
@@ -181,7 +185,10 @@ class ClientManager:
             if fields:
                 print(f"   Data: {fields}")
             
-            # 🆕 WELCOME nebo READY signalizuje úspěšné spojení
+            if msg_type == MessageType.PONG:
+                self.last_pong = time.time()
+                return
+            
             if msg_type in (MessageType.WELCOME, MessageType.AUTHORIZE):
                 print("✅ Přijato potvrzení od serveru")
                 self.welcome_received.set()  # 🆕 Signalizuj úspěch
@@ -478,6 +485,27 @@ class ClientManager:
         print("🛑 Zastavuji reconnect...")
         self.is_reconnecting = False
         self.auto_reconnect = False
+        
+    def _heartbeat_loop(self):
+        while self.running:
+            time.sleep(3)
+
+            if not self.connected or self.disconnecting:
+                continue
+
+            # 1Pošli PING
+            ok = self.send_message(MessageType.PING, [])
+            if not ok:
+                print("💀 Nepodařilo se poslat PING")
+                self._handle_connection_lost()
+                return
+
+            # Kontrola PONG
+            if self.last_pong is not None:
+                if time.time() - self.last_pong > 8:
+                    print("💀 Server neodpovídá (PONG timeout)")
+                    self._handle_connection_lost()
+                    return
     
     def send_empty_trick(self):
         """Pošle prázdnou TRICK zprávu."""

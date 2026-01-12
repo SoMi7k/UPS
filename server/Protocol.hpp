@@ -29,6 +29,8 @@ namespace Protocol {
         TRICK = 16,
         BIDDING = 17,
         RESET = 18,
+        PING = 19,
+        PONG = 20,
     };
 
     // Konstanty
