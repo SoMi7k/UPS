@@ -41,6 +41,7 @@ void MessageHandler::processClientMessage(ClientInfo* client, const Protocol::Me
     // ===== PING =====
     else if (msgType == Protocol::MessageType::PING) {
         networkManager->sendMessage(client->socket, client->playerNumber, Protocol::MessageType::PONG, {});
+        client->lastSeen = std::chrono::steady_clock::now();
     }
     // ===== DISCONNECT =====
     else if (msgType == Protocol::MessageType::DISCONNECT) {
