@@ -40,9 +40,9 @@ public:
 
     // ===== Socket operace =====
     bool initializeSocket(); // Inicializace serverového socketu
-    int acceptConnection(); // Přijme nové klientské připojení
     void closeSocket(int socket); // Uzavře konkrétní socket
     void closeServerSocket(); // Uzavře serverový socket
+    bool enableKeepAlive(int socket);
 
     // ===== Práce se zprávami =====
     bool sendMessage(int socket, int clientNumber, Protocol::MessageType msgType,

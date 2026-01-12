@@ -50,6 +50,8 @@ void GameServer::acceptClients() {
       continue;
     }
 
+    networkManager->enableKeepAlive(clientSocket);
+
     char clientIP[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, INET_ADDRSTRLEN);
 

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
+#include <netinet/tcp.h>
 
 #include "NetworkManager.hpp"
 
@@ -314,36 +315,6 @@ bool NetworkManager::initializeSocket() {
     return true;
 }
 
-int NetworkManager::acceptConnection() {
-    sockaddr_in clientAddress{};
-    socklen_t clientLen = sizeof(clientAddress);
-
-    int clientSocket = accept(serverSocket,
-                              reinterpret_cast<sockaddr*>(&clientAddress),
-                              &clientLen);
-
-    if (clientSocket < 0) {
-        return -1;
-    }
-
-    char clientIP[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, INET_ADDRSTRLEN);
-
-    std::cout << "\n✓ Nový klient se připojil!" << std::endl;
-    std::cout << "  - Socket: " << clientSocket << std::endl;
-    std::cout << "  - IP: " << clientIP << std::endl;
-    std::cout << "  - Port: " << ntohs(clientAddress.sin_port) << std::endl;
-
-    return clientSocket;
-}
-
-void NetworkManager::closeSocket(int socket) {
-    if (socket >= 0) {
-        shutdown(socket, SHUT_RDWR);
-        close(socket);
-    }
-}
-
 void NetworkManager::closeServerSocket() {
     if (serverSocket >= 0) {
         std::cout << "🔌 Zavírám hlavní socket..." << std::endl;
@@ -492,6 +463,35 @@ std::string NetworkManager::receiveMessage(int socket) {
 
     std::cout << "✅ Přijata zpráva: " << data << std::endl;
     return data;
+}
+
+bool NetworkManager::enableKeepAlive(int socket) {
+    // Povolit TCP keep-alive
+    int optval = 1;
+    if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)) < 0) {
+        std::cerr << "⚠️ Nepodařilo se povolit SO_KEEPALIVE" << std::endl;
+        return false;
+    }
+
+    #ifdef __linux__
+        int keepidle = 5;  // Po 3s nečinnosti začne posílat testy
+        if (setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle)) < 0) {
+            std::cerr << "⚠️ Nepodařilo se nastavit TCP_KEEPIDLE" << std::endl;
+        }
+
+        int keepintvl = 5;  // Každých 3s pošle test
+        if (setsockopt(socket, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl)) < 0) {
+            std::cerr << "⚠️ Nepodařilo se nastavit TCP_KEEPINTVL" << std::endl;
+        }
+
+        int keepcnt = 1;  // Po 3 neúspěšných zkusí = odpojení
+        if (setsockopt(socket, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt)) < 0) {
+            std::cerr << "⚠️ Nepodařilo se nastavit TCP_KEEPCNT" << std::endl;
+        }
+    #endif
+
+    std::cout << "✅ Keep-alive povolen (5 idle, 5s interval, 1 pokusy)" << std::endl;
+    return true;
 }
 
 int NetworkManager::checkMessage(Protocol::Message msg, int clientNumber, int required_players) {
