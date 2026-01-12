@@ -52,7 +52,6 @@ public:
     // ===== Práce s pakety =====
     std::string findPacketByID(int clientNumber, int packetID); // Najde paket podle ID klienta a ID paketu
     int findLatestPacketID(int clientNumber); // Vrátí ID posledního paketu pro daného klienta
-    int checkMessage(Protocol::Message msg, int clientNumber, int required_players); // Zkontroluje hlavičku zprávy
 
     // ===== Gettery =====
     int getServerSocket() const { return serverSocket; }
